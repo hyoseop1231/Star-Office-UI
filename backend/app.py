@@ -2,11 +2,27 @@
 """Star Office UI - Backend State Service"""
 
 from flask import Flask, jsonify, send_from_directory, make_response, request
+from flask_socketio import SocketIO
 from datetime import datetime, timedelta
 import json
 import os
 import re
 import threading
+import subprocess
+from collections import defaultdict
+
+def notify_telegram_error(agent_name, detail):
+    """에러 상태 시 텔레그램 알림"""
+    try:
+        msg = f"🚨 Star Office 에러\n에이전트: {agent_name}\n상세: {detail}"
+        subprocess.Popen([
+            "openclaw", "message", "send",
+            "--channel", "telegram",
+            "--message", msg
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
 
 # Paths (project-relative, no hardcoded absolute paths)
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,46 +31,73 @@ FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 STATE_FILE = os.path.join(ROOT_DIR, "state.json")
 AGENTS_STATE_FILE = os.path.join(ROOT_DIR, "agents-state.json")
 JOIN_KEYS_FILE = os.path.join(ROOT_DIR, "join-keys.json")
+HISTORY_FILE = os.path.join(ROOT_DIR, "history.jsonl")
+MISSIONS_STATE_FILE = os.path.join(ROOT_DIR, "missions-state.json")
+SHOP_STATE_FILE = os.path.join(ROOT_DIR, "shop-state.json")
+
+LEVEL_TABLE = [
+    (0, "인턴"),
+    (100, "주니어"),
+    (300, "미드레벨"),
+    (600, "시니어"),
+    (1000, "리드"),
+    (2000, "전설의 에이전트")
+]
+
+MISSIONS = [
+    {"id": "exec20", "title": "오늘 실행 20회", "target": 20, "type": "executing_count"},
+    {"id": "noerror6h", "title": "6시간 에러 없음", "target": 360, "type": "error_free_minutes"},
+    {"id": "allactive", "title": "전원 동시 작업", "target": 1, "type": "all_active"},
+]
+
+SHOP_ITEMS = [
+    {"id": "cactus", "name": "선인장", "price": 50, "type": "decoration"},
+    {"id": "poster2", "name": "새 포스터", "price": 100, "type": "decoration"},
+    {"id": "fancy_desk", "name": "고급 책상", "price": 200, "type": "furniture"},
+]
+
+# 이전 auth 상태 추적 (offline 전환 알림용)
+_agent_prev_status = {}
 
 
 def get_yesterday_date_str():
-    """获取昨天的日期字符串 YYYY-MM-DD"""
+    """어제 날짜 문자열 반환 YYYY-MM-DD"""
     yesterday = datetime.now() - timedelta(days=1)
     return yesterday.strftime("%Y-%m-%d")
 
 
 def sanitize_content(text):
-    """清理内容，保护隐私"""
+    """개인정보 보호를 위한 내용 정리"""
     import re
     
-    # 移除 OpenID、User ID 等
-    text = re.sub(r'ou_[a-f0-9]+', '[用户]', text)
-    text = re.sub(r'user_id="[^"]+"', 'user_id="[隐藏]"', text)
+    # OpenID, User ID 등 제거
+    text = re.sub(r'ou_[a-f0-9]+', '[사용자]', text)
+    text = re.sub(r'user_id="[^"]+"', 'user_id="[숨김]"', text)
     
-    # 移除具体的人名（如果有的话）
-    # 这里可以根据需要添加更多规则
+    # 특정 이름 제거
+    # 필요시 규칙 추가 가능
     
-    # 移除 IP 地址、路径等敏感信息
-    text = re.sub(r'/root/[^"\s]+', '[路径]', text)
+    # IP 주소, 경로 등 민감 정보 제거
+    text = re.sub(r'/root/[^"\s]+', '[경로]', text)
     text = re.sub(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', '[IP]', text)
     
-    # 移除电话号码、邮箱等
-    text = re.sub(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', '[邮箱]', text)
-    text = re.sub(r'1[3-9]\d{9}', '[手机号]', text)
+    # 전화번호, 이메일 등 제거
+    text = re.sub(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', '[이메일]', text)
+    text = re.sub(r'1[3-9]\d{9}', '[전화번호]', text)
     
     return text
 
 
 def extract_memo_from_file(file_path):
-    """从 memory 文件中提取适合展示的 memo 内容（睿智风格的总结）"""
+    """memory 파일에서 표시할 메모 내용 추출"""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
         
-        # 提取真实内容，不做过度包装
+        # 실제 내용 추출, 과도한 포장 없이
         lines = content.strip().split("\n")
         
-        # 提取核心要点
+        # 핵심 요점 추출
         core_points = []
         for line in lines:
             line = line.strip()
@@ -68,44 +111,44 @@ def extract_memo_from_file(file_path):
                 core_points.append(line)
         
         if not core_points:
-            return "「昨日无事记录」\n\n若有恒，何必三更眠五更起；最无益，莫过一日曝十日寒。"
+            return "「어제는 특별한 기록 없음」\n\n「시작이 반이다.」"
         
-        # 从核心内容中提取 2-3 个关键点
+        # 핵심 내용에서 2-3개 핵심 포인트 추출
         selected_points = core_points[:3]
         
-        # 睿智语录库
+        # 한국 속담 모음
         wisdom_quotes = [
-            "「工欲善其事，必先利其器。」",
-            "「不积跬步，无以至千里；不积小流，无以成江海。」",
-            "「知行合一，方可致远。」",
-            "「业精于勤，荒于嬉；行成于思，毁于随。」",
-            "「路漫漫其修远兮，吾将上下而求索。」",
-            "「昨夜西风凋碧树，独上高楼，望尽天涯路。」",
-            "「衣带渐宽终不悔，为伊消得人憔悴。」",
-            "「众里寻他千百度，蓦然回首，那人却在，灯火阑珊处。」",
-            "「世事洞明皆学问，人情练达即文章。」",
-            "「纸上得来终觉浅，绝知此事要躬行。」"
+            "「아는 것이 힘이다.」",
+            "「천 리 길도 한 걸음부터.」",
+            "「아는 것이 힘이다.」",
+            "「천 리 길도 한 걸음부터.」",
+            "「배움에는 끝이 없다.」",
+            "「실패는 성공의 어머니.」",
+            "「하늘은 스스로 돕는 자를 돕는다.」",
+            "「오늘 할 수 있는 일을 내일로 미루지 마라.」",
+            "「돌다리도 두드려 보고 건너라.」",
+            "「세 살 버릇 여든까지 간다.」"
         ]
         
         import random
         quote = random.choice(wisdom_quotes)
         
-        # 组合内容
+        # 내용 조합
         result = []
         
-        # 添加核心内容
+        # 핵심 내용 추가
         if selected_points:
             for i, point in enumerate(selected_points):
-                # 隐私清理
+                # 개인정보 정리
                 point = sanitize_content(point)
-                # 截断过长的内容
+                # 너무 긴 내용 자르기
                 if len(point) > 40:
                     point = point[:37] + "..."
-                # 每行最多 20 字
+                # 한 줄 최대 20자
                 if len(point) <= 20:
                     result.append(f"· {point}")
                 else:
-                    # 按 20 字切分
+                    # 20자 단위로 분할
                     for j in range(0, len(point), 20):
                         chunk = point[j:j+20]
                         if j == 0:
@@ -113,7 +156,7 @@ def extract_memo_from_file(file_path):
                         else:
                             result.append(f"  {chunk}")
         
-        # 添加睿智语录
+        # 속담 추가
         if quote:
             if len(quote) <= 20:
                 result.append(f"\n{quote}")
@@ -128,10 +171,18 @@ def extract_memo_from_file(file_path):
         return "\n".join(result).strip()
         
     except Exception as e:
-        print(f"提取 memo 失败: {e}")
-        return "「昨日记录加载失败」\n\n「往者不可谏，来者犹可追。」"
+        print(f"memo 추출 실패: {e}")
+        return "「어제 기록 불러오기 실패」\n\n「실패는 성공의 어머니.」"
+
+
+ACCESS_TOKEN = "4hEFoNBdKmme3zp7eRr9Mw"
+
+def check_auth():
+    t = request.args.get("token") or request.cookies.get("star_token")
+    return t == ACCESS_TOKEN
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="/static")
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Guard join-agent critical section to enforce per-key concurrency under parallel requests
 join_lock = threading.Lock()
@@ -214,6 +265,46 @@ def save_state(state: dict):
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
+def append_history(agent: str, state: str, detail: str):
+    """Append one history row and keep only the latest 500 lines."""
+    entry = {
+        "ts": datetime.now().isoformat(),
+        "agent": agent,
+        "state": state,
+        "detail": detail or ""
+    }
+
+    lines = []
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                lines = [ln for ln in f.readlines() if ln.strip()]
+        except Exception:
+            lines = []
+
+    lines.append(json.dumps(entry, ensure_ascii=False) + "\n")
+    if len(lines) > 500:
+        lines = lines[-500:]
+
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+def broadcast_state_update():
+    """Broadcast the latest main + agent state to all websocket clients."""
+    payload = {
+        "main": load_state(),
+        "agents": load_agents_state()
+    }
+    socketio.emit("state_update", payload)
+
+
+@socketio.on("connect")
+def handle_socket_connect():
+    """Send an immediate snapshot when a new client connects."""
+    broadcast_state_update()
+
+
 # Initialize state
 if not os.path.exists(STATE_FILE):
     save_state(DEFAULT_STATE)
@@ -222,6 +313,8 @@ if not os.path.exists(STATE_FILE):
 @app.route("/", methods=["GET"])
 def index():
     """Serve the pixel office UI with built-in version cache busting"""
+    if not check_auth():
+        return "<h2>🔐 접속 토큰이 필요합니다</h2><p>?token=YOUR_TOKEN 을 URL에 추가하세요.</p>", 401
     with open(os.path.join(FRONTEND_DIR, "index.html"), "r", encoding="utf-8") as f:
         html = f.read()
     html = html.replace("{{VERSION_TIMESTAMP}}", VERSION_TIMESTAMP)
@@ -282,16 +375,34 @@ DEFAULT_AGENTS = [
 ]
 
 
+
+def track_agent_offline_transition(agents):
+    """approved -> offline 전환 시 1회 텔레그램 알림"""
+    global _agent_prev_status
+    for a in agents:
+        aid = a.get("agentId") or a.get("name")
+        auth_status = a.get("authStatus", "pending")
+        prev_status = _agent_prev_status.get(aid)
+        if auth_status == "offline" and prev_status == "approved":
+            notify_telegram_error(a.get("name", aid), "오프라인 전환됨")
+        _agent_prev_status[aid] = auth_status
+
+
 def load_agents_state():
     if os.path.exists(AGENTS_STATE_FILE):
         try:
             with open(AGENTS_STATE_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list):
+                    for a in data:
+                        ensure_agent_meta(a)
+                    track_agent_offline_transition(data)
                     return data
         except Exception:
             pass
-    return list(DEFAULT_AGENTS)
+    defaults = [ensure_agent_meta(dict(a)) for a in DEFAULT_AGENTS]
+    track_agent_offline_transition(defaults)
+    return defaults
 
 
 def save_agents_state(agents):
@@ -316,10 +427,184 @@ def save_join_keys(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def calc_level(xp: int):
+    xp = int(xp or 0)
+    level = 1
+    title = LEVEL_TABLE[0][1]
+    for i, (threshold, t) in enumerate(LEVEL_TABLE, start=1):
+        if xp >= threshold:
+            level = i
+            title = t
+        else:
+            break
+    return level, title
+
+
+def ensure_agent_meta(agent: dict):
+    agent["xp"] = int(agent.get("xp", 0) or 0)
+    lvl, title = calc_level(agent["xp"])
+    agent["level"] = int(agent.get("level", lvl) or lvl)
+    agent["title"] = str(agent.get("title", title) or title)
+    agent["points"] = int(agent.get("points", 0) or 0)
+    agent["combo"] = int(agent.get("combo", 0) or 0)
+    agent["maxCombo"] = int(agent.get("maxCombo", 0) or 0)
+    agent["lastComboAt"] = agent.get("lastComboAt")
+    return agent
+
+
+def notify_telegram(message_text: str):
+    try:
+        subprocess.Popen([
+            "openclaw", "message", "send",
+            "--channel", "telegram",
+            "--message", message_text
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+
+def notify_level_up(agent_name: str, level: int, title: str):
+    notify_telegram(f"🎉 {agent_name}이 Lv.{level} {title}로 레벨업!")
+
+
+def notify_combo(agent_name: str, combo: int):
+    notify_telegram(f"🔥 {agent_name} {combo} 콤보!")
+
+
+def load_shop_state():
+    if os.path.exists(SHOP_STATE_FILE):
+        try:
+            with open(SHOP_STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    data.setdefault("purchases", {})
+                    return data
+        except Exception:
+            pass
+    return {"purchases": {}}
+
+
+def save_shop_state(data):
+    with open(SHOP_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def load_missions_state():
+    if os.path.exists(MISSIONS_STATE_FILE):
+        try:
+            with open(MISSIONS_STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+    return {"dates": {}}
+
+
+def save_missions_state(data):
+    with open(MISSIONS_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def iter_history_rows_for_date(date_str: str):
+    if not os.path.exists(HISTORY_FILE):
+        return
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    row = json.loads(ln)
+                except Exception:
+                    continue
+                if str(row.get("ts", "")).startswith(date_str):
+                    yield row
+    except Exception:
+        return
+
+
+def compute_today_metrics(today: str):
+    rows = list(iter_history_rows_for_date(today))
+    exec_count = 0
+    leaderboard = defaultdict(int)
+    all_active = 0
+    active_map = {}
+    last_error_at = None
+    for r in rows:
+        state = r.get("state")
+        agent = r.get("agent", "unknown")
+        ts = r.get("ts")
+        if state == "executing":
+            exec_count += 1
+            leaderboard[agent] += 1
+            active_map[agent] = True
+            if active_map and all(active_map.values()):
+                all_active = 1
+        elif state == "error":
+            active_map[agent] = False
+            if ts:
+                last_error_at = ts
+        else:
+            active_map[agent] = False
+
+    error_free_minutes = 0
+    try:
+        now = datetime.now()
+        if last_error_at:
+            dt = datetime.fromisoformat(str(last_error_at).replace("Z", "+00:00"))
+            if dt.tzinfo:
+                from datetime import timezone
+                error_free_minutes = int((datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds() // 60)
+            else:
+                error_free_minutes = int((now - dt).total_seconds() // 60)
+        else:
+            start = datetime.strptime(today, "%Y-%m-%d")
+            error_free_minutes = int((now - start).total_seconds() // 60)
+        error_free_minutes = max(0, error_free_minutes)
+    except Exception:
+        error_free_minutes = 0
+
+    return {
+        "executing_count": exec_count,
+        "error_free_minutes": error_free_minutes,
+        "all_active": all_active,
+        "leaderboard": leaderboard,
+    }
+
+
+def evaluate_missions(today: str):
+    metrics = compute_today_metrics(today)
+    state = load_missions_state()
+    date_state = state.setdefault("dates", {}).setdefault(today, {"completed": []})
+    completed = set(date_state.get("completed", []))
+    missions_payload = []
+
+    for m in MISSIONS:
+        progress = int(metrics.get(m["type"], 0) or 0)
+        target = int(m.get("target", 1) or 1)
+        done = progress >= target
+        if done and m["id"] not in completed:
+            notify_telegram(f"✅ 일일 미션 달성: {m['title']}")
+            completed.add(m["id"])
+        missions_payload.append({
+            **m,
+            "progress": min(progress, target),
+            "rawProgress": progress,
+            "done": done,
+        })
+
+    date_state["completed"] = sorted(list(completed))
+    save_missions_state(state)
+    return missions_payload
+
+
 def normalize_agent_state(s):
-    """归一化状态，提高兼容性。
-    兼容输入：working/busy → writing; run/running → executing; sync → syncing; research → researching.
-    未识别默认返回 idle.
+    """상태 정규화, 호환성 향상.
+    호환 입력: working/busy → writing; run/running → executing; sync → syncing researching.
+    미인식 시 기본값 idle 반환.
     """
     if not s:
         return 'idle'
@@ -334,7 +619,7 @@ def normalize_agent_state(s):
         return 'researching'
     if s_lower in {'idle', 'writing', 'researching', 'executing', 'syncing', 'error'}:
         return s_lower
-    # 默认 fallback
+    # 기본 폴백
     return 'idle'
 
 
@@ -352,9 +637,13 @@ def state_to_area(state):
 
 # Ensure files exist
 if not os.path.exists(AGENTS_STATE_FILE):
-    save_agents_state(DEFAULT_AGENTS)
+    save_agents_state([ensure_agent_meta(dict(a)) for a in DEFAULT_AGENTS])
 if not os.path.exists(JOIN_KEYS_FILE):
     save_join_keys({"keys": []})
+if not os.path.exists(MISSIONS_STATE_FILE):
+    save_missions_state({"dates": {}})
+if not os.path.exists(SHOP_STATE_FILE):
+    save_shop_state({"purchases": {}})
 
 
 @app.route("/agents", methods=["GET"])
@@ -374,7 +663,7 @@ def get_agents():
         auth_expires_at_str = a.get("authExpiresAt")
         auth_status = a.get("authStatus", "pending")
 
-        # 1) 超时未批准自动 leave
+        # 1) 승인 타임아웃 시 자동 퇴장
         if auth_status == "pending" and auth_expires_at_str:
             try:
                 auth_expires_at = datetime.fromisoformat(auth_expires_at_str)
@@ -391,19 +680,20 @@ def get_agents():
             except Exception:
                 pass
 
-        # 2) 超时未推送自动离线（超过5分钟）
+        # 2) 5분 이상 push 없으면 자동 오프라인
         last_push_at_str = a.get("lastPushAt")
         if auth_status == "approved" and last_push_at_str:
             try:
                 last_push_at = datetime.fromisoformat(last_push_at_str)
                 age = (now - last_push_at).total_seconds()
-                if age > 300:  # 5分钟无推送自动离线
+                if age > 300:  # 5분 push 없으면 자동 오프라인
                     a["authStatus"] = "offline"
             except Exception:
                 pass
 
         cleaned_agents.append(a)
 
+    track_agent_offline_transition(cleaned_agents)
     save_agents_state(cleaned_agents)
     save_join_keys(keys_data)
 
@@ -417,16 +707,16 @@ def agent_approve():
         data = request.get_json()
         agent_id = (data.get("agentId") or "").strip()
         if not agent_id:
-            return jsonify({"ok": False, "msg": "缺少 agentId"}), 400
+            return jsonify({"ok": False, "msg": "agentId가 필요합니다"}), 400
 
         agents = load_agents_state()
         target = next((a for a in agents if a.get("agentId") == agent_id and not a.get("isMain")), None)
         if not target:
-            return jsonify({"ok": False, "msg": "未找到 agent"}), 404
+            return jsonify({"ok": False, "msg": "에이전트를 찾을 수 없습니다"}), 404
 
         target["authStatus"] = "approved"
         target["authApprovedAt"] = datetime.now().isoformat()
-        target["authExpiresAt"] = (datetime.now() + timedelta(hours=24)).isoformat()  # 默认授权24h
+        target["authExpiresAt"] = (datetime.now() + timedelta(hours=24)).isoformat()  # 기본 승인 24시간
 
         save_agents_state(agents)
         return jsonify({"ok": True, "agentId": agent_id, "authStatus": "approved"})
@@ -441,12 +731,12 @@ def agent_reject():
         data = request.get_json()
         agent_id = (data.get("agentId") or "").strip()
         if not agent_id:
-            return jsonify({"ok": False, "msg": "缺少 agentId"}), 400
+            return jsonify({"ok": False, "msg": "agentId가 필요합니다"}), 400
 
         agents = load_agents_state()
         target = next((a for a in agents if a.get("agentId") == agent_id and not a.get("isMain")), None)
         if not target:
-            return jsonify({"ok": False, "msg": "未找到 agent"}), 404
+            return jsonify({"ok": False, "msg": "에이전트를 찾을 수 없습니다"}), 404
 
         target["authStatus"] = "rejected"
         target["authRejectedAt"] = datetime.now().isoformat()
@@ -478,7 +768,7 @@ def join_agent():
     try:
         data = request.get_json()
         if not isinstance(data, dict) or not data.get("name"):
-            return jsonify({"ok": False, "msg": "请提供名字"}), 400
+            return jsonify({"ok": False, "msg": "이름을 입력해주세요"}), 400
 
         name = data["name"].strip()
         state = data.get("state", "idle")
@@ -489,25 +779,25 @@ def join_agent():
         state = normalize_agent_state(state)
 
         if not join_key:
-            return jsonify({"ok": False, "msg": "请提供接入密钥"}), 400
+            return jsonify({"ok": False, "msg": "접속 키를 입력해주세요"}), 400
 
         keys_data = load_join_keys()
         key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == join_key), None)
         if not key_item:
-            return jsonify({"ok": False, "msg": "接入密钥无效"}), 403
-        # key 可复用：不再因为 used=true 拒绝
+            return jsonify({"ok": False, "msg": "접속 키가 유효하지 않습니다"}), 403
+        # key 재사용 가능: used=true로 거부하지 않음
 
         with join_lock:
-            # 在锁内重新读取，避免并发请求都基于同一旧快照通过校验
+            # 락 내 재읽기: 동시 요청이 동일 스냅샷 기반으로 검사 통과하는 것 방지
             keys_data = load_join_keys()
             key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == join_key), None)
             if not key_item:
-                return jsonify({"ok": False, "msg": "接入密钥无效"}), 403
+                return jsonify({"ok": False, "msg": "접속 키가 유효하지 않습니다"}), 403
 
             agents = load_agents_state()
 
-            # 并发上限：同一个 key “同时在线”最多 3 个。
-            # 在线判定：lastPushAt/updated_at 在 5 分钟内；否则视为 offline，不计入并发。
+            # 동시 접속 상한: 같은 key 최대 3개 동시 온라인.
+            # 온라인 판정: lastPushAt/updated_at이 5분 이내; 아니면 offline으로 간주.
             now = datetime.now()
             existing = next((a for a in agents if a.get("name") == name and not a.get("isMain")), None)
             existing_id = existing.get("agentId") if existing else None
@@ -552,7 +842,7 @@ def join_agent():
 
             if active_count >= max_concurrent:
                 save_agents_state(agents)
-                return jsonify({"ok": False, "msg": f"该接入密钥当前并发已达上限（{max_concurrent}），请稍后或换另一个 key"}), 429
+                return jsonify({"ok": False, "msg": f"해당 키의 동시 접속이 상한({max_concurrent})에 도달했습니다"}), 429
 
             if existing:
                 existing["state"] = state
@@ -564,7 +854,7 @@ def join_agent():
                 existing["authStatus"] = "approved"
                 existing["authApprovedAt"] = datetime.now().isoformat()
                 existing["authExpiresAt"] = (datetime.now() + timedelta(hours=24)).isoformat()
-                existing["lastPushAt"] = datetime.now().isoformat()  # join 视为上线，纳入并发/离线判定
+                existing["lastPushAt"] = datetime.now().isoformat()  # join을 온라인으로 간주, 동시성/오프라인 판정에 포함
                 if not existing.get("avatar"):
                     import random
                     existing["avatar"] = random.choice(["guest_role_1", "guest_role_2", "guest_role_3", "guest_role_4", "guest_role_5", "guest_role_6"])
@@ -597,12 +887,14 @@ def join_agent():
             key_item["usedAt"] = datetime.now().isoformat()
             key_item["reusable"] = True
 
-            # 拿到有效 key 直接批准，不再等待主人手动点击
-            # （状态已在上面 existing/new 分支写入）
+            # 유효한 key 획득 시 즉시 승인, 수동 클릭 불필요
+            # (상태는 위 existing/new 분기에서 이미 기록됨)
+            for a in agents:
+                ensure_agent_meta(a)
             save_agents_state(agents)
             save_join_keys(keys_data)
 
-        return jsonify({"ok": True, "agentId": agent_id, "authStatus": "approved", "nextStep": "已自动批准，立即开始推送状态"})
+        return jsonify({"ok": True, "agentId": agent_id, "authStatus": "approved", "nextStep": "자동 승인 완료, 즉시 상태 push 시작"})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
 
@@ -621,7 +913,7 @@ def leave_agent():
         agent_id = (data.get("agentId") or "").strip()
         name = (data.get("name") or "").strip()
         if not agent_id and not name:
-            return jsonify({"ok": False, "msg": "请提供 agentId 或名字"}), 400
+            return jsonify({"ok": False, "msg": "agentId 또는 이름을 입력해주세요"}), 400
 
         agents = load_agents_state()
 
@@ -633,7 +925,7 @@ def leave_agent():
             target = next((a for a in agents if a.get("name") == name and not a.get("isMain")), None)
 
         if not target:
-            return jsonify({"ok": False, "msg": "没有找到要离开的 agent"}), 404
+            return jsonify({"ok": False, "msg": "퇴장할 에이전트를 찾을 수 없습니다"}), 404
 
         join_key = target.get("joinKey")
         new_agents = [a for a in agents if a.get("isMain") or a.get("agentId") != target.get("agentId")]
@@ -686,7 +978,7 @@ def agent_push():
         name = (data.get("name") or "").strip()
 
         if not agent_id or not join_key or not state:
-            return jsonify({"ok": False, "msg": "缺少 agentId/joinKey/state"}), 400
+            return jsonify({"ok": False, "msg": "agentId/joinKey/state가 필요합니다"}), 400
 
         valid_states = {"idle", "writing", "researching", "executing", "syncing", "error"}
         state = normalize_agent_state(state)
@@ -694,28 +986,60 @@ def agent_push():
         keys_data = load_join_keys()
         key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == join_key), None)
         if not key_item:
-            return jsonify({"ok": False, "msg": "joinKey 无效"}), 403
-        # key 可复用：不再做 used/usedByAgentId 绑定校验
+            return jsonify({"ok": False, "msg": "joinKey가 유효하지 않습니다"}), 403
+        # key 재사용 가능: used/usedByAgentId 바인딩 검사 생략
 
 
         agents = load_agents_state()
         target = next((a for a in agents if a.get("agentId") == agent_id and not a.get("isMain")), None)
         if not target:
-            return jsonify({"ok": False, "msg": "agent 未注册，请先 join"}), 404
+            return jsonify({"ok": False, "msg": "에이전트 미등록, join 먼저 하세요"}), 404
 
         # Auth check: only approved agents can push.
         # Note: "offline" is a presence state (stale), not a revoked authorization.
         # Allow offline agents to resume pushing and auto-promote them back to approved.
         auth_status = target.get("authStatus", "pending")
         if auth_status not in {"approved", "offline"}:
-            return jsonify({"ok": False, "msg": "agent 未获授权，请等待主人批准"}), 403
+            return jsonify({"ok": False, "msg": "에이전트 미승인, 승인 대기 중"}), 403
         if auth_status == "offline":
             target["authStatus"] = "approved"
             target["authApprovedAt"] = datetime.now().isoformat()
             target["authExpiresAt"] = (datetime.now() + timedelta(hours=24)).isoformat()
 
         if target.get("joinKey") != join_key:
-            return jsonify({"ok": False, "msg": "joinKey 不匹配"}), 403
+            return jsonify({"ok": False, "msg": "joinKey가 일치하지 않습니다"}), 403
+
+        ensure_agent_meta(target)
+        prev_state = (target.get("state") or "idle").strip().lower()
+
+        # Combo / streak
+        if state == "executing":
+            target["combo"] = int(target.get("combo", 0) or 0) + 1
+            target["lastComboAt"] = datetime.now().isoformat()
+            target["maxCombo"] = max(int(target.get("maxCombo", 0) or 0), target["combo"])
+            if target["combo"] > 0 and target["combo"] % 5 == 0:
+                notify_combo(target.get("name", agent_id), target["combo"])
+        elif state == "error":
+            target["combo"] = 0
+
+        # XP/points on completion transitions
+        xp_gain = 0
+        if prev_state == "executing" and state == "idle":
+            xp_gain = 10
+            target["points"] = int(target.get("points", 0) or 0) + 5
+        elif prev_state == "error" and state == "idle":
+            xp_gain = 25
+            target["points"] = int(target.get("points", 0) or 0) + 5
+
+        old_level = int(target.get("level", 1) or 1)
+        if xp_gain > 0:
+            target["xp"] = int(target.get("xp", 0) or 0) + xp_gain
+
+        new_level, new_title = calc_level(int(target.get("xp", 0) or 0))
+        target["level"] = new_level
+        target["title"] = new_title
+        if new_level > old_level:
+            notify_level_up(target.get("name", agent_id), new_level, new_title)
 
         target["state"] = state
         target["detail"] = detail
@@ -726,10 +1050,86 @@ def agent_push():
         target["source"] = "remote-openclaw"
         target["lastPushAt"] = datetime.now().isoformat()
 
+        for a in agents:
+            ensure_agent_meta(a)
+
         save_agents_state(agents)
-        return jsonify({"ok": True, "agentId": agent_id, "area": target.get("area")})
+        append_history(target.get("name", agent_id), state, detail)
+        broadcast_state_update()
+        if state == "error":
+            notify_telegram_error(target.get("name", agent_id), detail)
+        return jsonify({
+            "ok": True,
+            "agentId": agent_id,
+            "area": target.get("area"),
+            "xp": target.get("xp", 0),
+            "level": target.get("level", 1),
+            "title": target.get("title", LEVEL_TABLE[0][1]),
+            "points": target.get("points", 0),
+            "combo": target.get("combo", 0)
+        })
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/missions", methods=["GET"])
+def missions():
+    today = datetime.now().strftime("%Y-%m-%d")
+    payload = evaluate_missions(today)
+    return jsonify({"date": today, "missions": payload})
+
+
+@app.route("/leaderboard", methods=["GET"])
+def leaderboard():
+    today = datetime.now().strftime("%Y-%m-%d")
+    metrics = compute_today_metrics(today)
+    rows = sorted(metrics["leaderboard"].items(), key=lambda x: x[1], reverse=True)
+    data = [{"rank": i + 1, "agent": name, "executingCount": count} for i, (name, count) in enumerate(rows)]
+    return jsonify({"date": today, "leaderboard": data})
+
+
+@app.route("/shop", methods=["GET"])
+def shop():
+    shop_state = load_shop_state()
+    agents = load_agents_state()
+    points = {a.get("name"): int(a.get("points", 0) or 0) for a in agents if not a.get("isMain")}
+    return jsonify({"items": SHOP_ITEMS, "purchases": shop_state.get("purchases", {}), "points": points})
+
+
+@app.route("/shop/buy", methods=["POST"])
+def shop_buy():
+    data = request.get_json() or {}
+    agent_id = (data.get("agentId") or "").strip()
+    item_id = (data.get("itemId") or "").strip()
+    if not agent_id or not item_id:
+        return jsonify({"ok": False, "msg": "agentId/itemId가 필요합니다"}), 400
+
+    item = next((i for i in SHOP_ITEMS if i["id"] == item_id), None)
+    if not item:
+        return jsonify({"ok": False, "msg": "존재하지 않는 상품입니다"}), 404
+
+    agents = load_agents_state()
+    target = next((a for a in agents if a.get("agentId") == agent_id and not a.get("isMain")), None)
+    if not target:
+        return jsonify({"ok": False, "msg": "에이전트를 찾을 수 없습니다"}), 404
+
+    ensure_agent_meta(target)
+    current_points = int(target.get("points", 0) or 0)
+    if current_points < int(item["price"]):
+        return jsonify({"ok": False, "msg": "포인트가 부족합니다", "points": current_points}), 400
+
+    shop_state = load_shop_state()
+    purchases = shop_state.setdefault("purchases", {})
+    owned = purchases.setdefault(agent_id, [])
+    if item_id in owned:
+        return jsonify({"ok": False, "msg": "이미 구매한 아이템입니다"}), 400
+
+    target["points"] = current_points - int(item["price"])
+    owned.append(item_id)
+
+    save_agents_state(agents)
+    save_shop_state(shop_state)
+    return jsonify({"ok": True, "agentId": agent_id, "itemId": item_id, "points": target["points"], "purchases": owned})
 
 
 @app.route("/health", methods=["GET"])
@@ -740,9 +1140,9 @@ def health():
 
 @app.route("/yesterday-memo", methods=["GET"])
 def get_yesterday_memo():
-    """获取昨日小日记"""
+    """어제 일기 가져오기"""
     try:
-        # 先尝试找昨天的文件
+        # 먼저 어제 파일 찾기 시도
         yesterday_str = get_yesterday_date_str()
         yesterday_file = os.path.join(MEMORY_DIR, f"{yesterday_str}.md")
         
@@ -752,12 +1152,12 @@ def get_yesterday_memo():
         if os.path.exists(yesterday_file):
             target_file = yesterday_file
         else:
-            # 如果昨天没有，找最近的一天
+            # 어제 파일 없으면 가장 최근 날짜 파일 찾기
             if os.path.exists(MEMORY_DIR):
                 files = [f for f in os.listdir(MEMORY_DIR) if f.endswith(".md") and re.match(r"\d{4}-\d{2}-\d{2}\.md", f)]
                 if files:
                     files.sort(reverse=True)
-                    # 跳过今天的（如果存在）
+                    # 오늘 파일은 건너뜀
                     today_str = datetime.now().strftime("%Y-%m-%d")
                     for f in files:
                         if f != f"{today_str}.md":
@@ -775,7 +1175,7 @@ def get_yesterday_memo():
         else:
             return jsonify({
                 "success": False,
-                "msg": "没有找到昨日日记"
+                "msg": "어제 일기를 찾을 수 없습니다"
             })
     except Exception as e:
         return jsonify({
@@ -801,9 +1201,122 @@ def set_state_endpoint():
             state["detail"] = data["detail"]
         state["updated_at"] = datetime.now().isoformat()
         save_state(state)
+        append_history("왕천재", state.get("state", "idle"), state.get("detail", ""))
+        broadcast_state_update()
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"status": "error", "msg": str(e)}), 500
+
+
+@app.route("/history", methods=["GET"])
+def get_history():
+    """Get recent history rows from history.jsonl with optional agent/date filter."""
+    try:
+        limit = int(request.args.get("limit", 50))
+    except Exception:
+        limit = 50
+    limit = max(1, min(limit, 500))
+
+    agent_filter = (request.args.get("agent", "") or "").strip()
+    date_filter = (request.args.get("date", "") or "").strip()  # YYYY-MM-DD
+
+    rows = []
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                for ln in f:
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    try:
+                        row = json.loads(ln)
+                    except Exception:
+                        continue
+
+                    if agent_filter and row.get("agent") != agent_filter:
+                        continue
+                    if date_filter:
+                        ts = row.get("ts", "")
+                        if not str(ts).startswith(date_filter):
+                            continue
+
+                    rows.append(row)
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)}), 500
+
+    return jsonify(rows[-limit:])
+
+
+@app.route("/ping-agents", methods=["GET"])
+def ping_agents():
+    results = {}
+    hosts = {
+        "울트라맨": "192.168.0.3",
+        "똘똘이": "192.168.0.109",
+        "김양이": "192.168.0.130",
+        "토르": "192.168.0.129",
+        "카다스": "192.168.0.86"
+    }
+    for name, ip in hosts.items():
+        start = datetime.now()
+        try:
+            result = subprocess.run(["ping", "-c", "1", "-W", "1", ip], capture_output=True)
+            ms = round((datetime.now() - start).total_seconds() * 1000)
+            results[name] = {"ip": ip, "alive": result.returncode == 0, "ms": ms}
+        except Exception:
+            results[name] = {"ip": ip, "alive": False, "ms": None}
+    return jsonify(results)
+
+
+@app.route("/daily-report", methods=["GET"])
+def daily_report():
+    today = datetime.now().strftime("%Y-%m-%d")
+    stats = defaultdict(lambda: {"total": 0, "error": 0})
+
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                for ln in f:
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    try:
+                        row = json.loads(ln)
+                    except Exception:
+                        continue
+                    ts = str(row.get("ts", ""))
+                    if not ts.startswith(today):
+                        continue
+                    agent = row.get("agent", "unknown")
+                    state = row.get("state", "idle")
+                    stats[agent]["total"] += 1
+                    if state == "error":
+                        stats[agent]["error"] += 1
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)}), 500
+
+    lines = ["📊 Star Office 일일 리포트", f"📅 {today}"]
+    if not stats:
+        lines.append("오늘 기록된 작업이 없습니다.")
+    else:
+        for agent, c in stats.items():
+            if c["error"] > 0:
+                lines.append(f"{agent}: 작업 {c['total']}회 / 에러 {c['error']}회")
+            else:
+                lines.append(f"{agent}: 작업 {c['total']}회")
+
+    msg = "\n".join(lines)
+    try:
+        subprocess.Popen([
+            "openclaw", "message", "send",
+            "--channel", "telegram",
+            "--message", msg
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        sent = True
+    except Exception:
+        sent = False
+
+    return jsonify({"ok": True, "date": today, "report": dict(stats), "message": msg, "sent": sent})
 
 
 if __name__ == "__main__":
@@ -815,4 +1328,4 @@ if __name__ == "__main__":
     print(f"Listening on: http://0.0.0.0:{port}")
     print("=" * 50)
     
-    app.run(host="0.0.0.0", port=port, debug=False)
+    socketio.run(app, host="0.0.0.0", port=port, debug=False)

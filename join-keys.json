@@ -4,24 +4,50 @@
       "key": "ocj_ultraman",
       "name": "울트라맨",
       "maxConcurrent": 3,
-      "reusable": true
+      "reusable": true,
+      "used": true,
+      "usedBy": "울트라맨",
+      "usedByAgentId": "npc1",
+      "usedAt": "2026-03-01T22:15:23.015369"
     },
     {
       "key": "ocj_ttolttoli",
       "name": "똘똘이",
       "maxConcurrent": 3,
-      "reusable": true
+      "reusable": true,
+      "used": true,
+      "usedBy": "똘똘이",
+      "usedByAgentId": "agent_1772370923027_v1m0",
+      "usedAt": "2026-03-01T22:15:23.027144"
     },
     {
       "key": "ocj_kimyangi",
       "name": "김양이",
       "maxConcurrent": 3,
-      "reusable": true
+      "reusable": true,
+      "used": true,
+      "usedBy": "김양이",
+      "usedByAgentId": "agent_1772370923036_jmaj",
+      "usedAt": "2026-03-01T22:15:23.036919"
     },
     {
       "key": "ocj_kadath",
       "name": "카다스",
       "maxConcurrent": 3,
+      "reusable": true,
+      "used": true,
+      "usedBy": "카다스",
+      "usedByAgentId": "agent_1772370923045_a6ih",
+      "usedAt": "2026-03-01T22:15:23.045752"
+    },
+    {
+      "key": "ocj_torry",
+      "name": "토르",
+      "maxConcurrent": 3,
+      "used": true,
+      "usedBy": "토르",
+      "usedByAgentId": "agent_1772371143587_jhrg",
+      "usedAt": "2026-03-01T22:19:03.587896",
       "reusable": true
     }
   ]

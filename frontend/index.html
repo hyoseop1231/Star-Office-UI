@@ -27,6 +27,8 @@
         /* 底部面板容器 */
         #bottom-panels {
             display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
             gap: 20px;
             width: 1280px;
             max-width: 95vw;
@@ -275,6 +277,76 @@
             text-align: center;
             padding: 20px 0;
         }
+        #history-panel {
+            width: 360px;
+            height: 300px;
+            background: #2c2f3a;
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid #e94560;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+         #history-panel-title {
+            color: #ffd700;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            letter-spacing: 1px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #4a4f5f;
+            margin-bottom: 6px;
+        }
+        #history-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-right: 4px;
+        }
+        #history-list::-webkit-scrollbar { width: 6px; }
+        #history-list::-webkit-scrollbar-track { background: #1a1a2e; }
+        #history-list::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+        .history-item {
+            background: #3a3f4f;
+            border: 1px solid #555;
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #fff;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .history-meta {
+            color: #ffd700;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        
+        .history-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        #historyAgentFilter {
+            background: #3a3f4f;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-family: 'ArkPixel', monospace;
+            font-size: 11px;
+            max-width: 140px;
+        }
+        .ping-badge {
+            margin-top: 3px;
+            font-size: 11px;
+            color: #9ae6b4;
+        }
+
         .memo-decoration {
             text-align: center;
             margin: 4px 0;
@@ -323,7 +395,8 @@
 
             #memo-panel,
             #control-bar,
-            #guest-agent-panel {
+            #guest-agent-panel,
+            #history-panel {
                 width: 100%;
                 height: auto;
                 min-height: 180px;
@@ -332,6 +405,7 @@
             #memo-panel { min-height: 220px; }
             #control-bar { min-height: 210px; }
             #guest-agent-panel { min-height: 220px; }
+            #history-panel { min-height: 220px; }
 
             #memo-date {
                 left: 0;
@@ -346,6 +420,7 @@
 
             #control-bar-title,
             #guest-agent-panel-title,
+            #history-panel-title,
             #memo-title {
                 font-size: 14px;
             }
@@ -425,6 +500,19 @@
                 <div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">에이전트 불러오는 중...</div>
             </div>
         </div>
+        <!-- History 面板 -->
+        <div id="history-panel">
+            <div style="margin-bottom:10px; padding:8px; border:1px solid #4a4f5f; border-radius:6px; background:#232733;">
+                <div style="color:#ffd700;font-size:13px;margin-bottom:6px;">🎯 오늘의 미션</div>
+                <div id="missions-list" style="display:flex;flex-direction:column;gap:6px;color:#cbd5e1;font-size:11px;">
+                    <div>미션 로딩중...</div>
+                </div>
+            </div>
+            <div class="history-header-row"><div id="history-panel-title">— 작업 히스토리 —</div><select id="historyAgentFilter"><option value="">전체</option><option value="왕천재">왕천재</option><option value="울트라맨">울트라맨</option><option value="똘똘이">똘똘이</option><option value="김양이">김양이</option><option value="토르">토르</option><option value="카다스">카다스</option></select></div>
+            <div id="history-list">
+                <div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">히스토리 불러오는 중...</div>
+            </div>
+        </div>
     </div>
     
     <div id="status-text">로딩중...</div>
@@ -438,7 +526,16 @@
         移动视野
     </button>
 
+    <button id="shop-open-btn" style="position:fixed;bottom:18px;right:18px;z-index:99999;padding:10px 12px;border:2px solid #e94560;border-radius:8px;background:#2c2f3a;color:#fff;font-family:ArkPixel,monospace;cursor:pointer;">🛒 상점</button>
+    <div id="shop-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:100000;align-items:center;justify-content:center;">
+      <div style="width:min(520px,92vw);max-height:80vh;overflow:auto;background:#1f2430;border:2px solid #e94560;border-radius:10px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;color:#ffd700;"><strong>오피스 상점</strong><button id="shop-close-btn" style="background:#333;color:#fff;border:1px solid #555;border-radius:4px;padding:4px 8px;cursor:pointer;">닫기</button></div>
+        <div id="shop-list" style="display:flex;flex-direction:column;gap:8px;color:#fff;font-size:12px;"></div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script>
         // 检测浏览器是否支持 WebP
         let supportsWebP = false;
@@ -552,6 +649,152 @@
         
         // 懒加载逻辑已取消（体验优先：装饰首屏直接出现）
 
+        function formatHistoryTime(ts) {
+            if (!ts) return '--:--:--';
+            const d = new Date(ts);
+            if (Number.isNaN(d.getTime())) return ts;
+            return d.toLocaleTimeString('ko-KR', { hour12: false });
+        }
+
+        function escapeHtml(s) {
+            return String(s || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function renderHistory(items) {
+            if (!historyListEl) historyListEl = document.getElementById('history-list');
+            if (!historyListEl) return;
+            if (!Array.isArray(items) || items.length === 0) {
+                historyListEl.innerHTML = '<div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">히스토리 없음</div>';
+                return;
+            }
+
+            historyListEl.innerHTML = items.map(item => {
+                const agent = escapeHtml(item.agent || 'unknown');
+                const state = escapeHtml(item.state || 'idle');
+                const detail = escapeHtml(item.detail || '-');
+                const t = escapeHtml(formatHistoryTime(item.ts));
+                return `<div class="history-item"><div class="history-meta">${t} · ${agent} · ${state}</div><div>${detail}</div></div>`;
+            }).join('');
+            historyListEl.scrollTop = historyListEl.scrollHeight;
+        }
+
+        function fetchHistory() {
+            const selectedAgent = historyAgentFilterEl ? historyAgentFilterEl.value : '';
+            const params = new URLSearchParams({ limit: '20', t: String(Date.now()) });
+            if (selectedAgent) params.set('agent', selectedAgent);
+            fetch('/history?' + params.toString(), { cache: 'no-store' })
+                .then(r => r.json())
+                .then(rows => renderHistory(rows))
+                .catch(() => {
+                    if (!historyListEl) historyListEl = document.getElementById('history-list');
+                    if (historyListEl) historyListEl.innerHTML = '<div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">히스토리 로드 실패</div>';
+                });
+        }
+
+        function fetchMissions() {
+            const list = document.getElementById('missions-list');
+            fetch('/missions?t=' + Date.now(), { cache: 'no-store' })
+                .then(r => r.json())
+                .then(data => {
+                    const missions = Array.isArray(data.missions) ? data.missions : [];
+                    if (!list) return;
+                    if (!missions.length) {
+                        list.innerHTML = '<div>미션 없음</div>';
+                        return;
+                    }
+                    list.innerHTML = missions.map(m => {
+                        const p = Math.max(0, Math.min(100, Math.round(((m.progress || 0) / Math.max(1, (m.target || 1))) * 100)));
+                        const done = m.done ? '✅' : '▫️';
+                        return `<div>${done} ${escapeHtml(m.title)} (${m.progress}/${m.target})<div style="height:6px;background:#111827;border-radius:99px;margin-top:2px;"><div style="height:100%;width:${p}%;background:${m.done ? '#22c55e' : '#e94560'};border-radius:99px;"></div></div></div>`;
+                    }).join('');
+                })
+                .catch(() => { if (list) list.innerHTML = '<div>미션 로드 실패</div>'; });
+        }
+
+        function fetchLeaderboard() {
+            fetch('/leaderboard?t=' + Date.now(), { cache: 'no-store' })
+                .then(r => r.json())
+                .then(data => {
+                    const rows = Array.isArray(data.leaderboard) ? data.leaderboard : [];
+                    if (!leaderboardTextObj) return;
+                    if (!rows.length) {
+                        leaderboardTextObj.setText('🏆 오늘의 리더보드\n(데이터 없음)');
+                        return;
+                    }
+                    const medals = ['🥇', '🥈', '🥉'];
+                    const lines = ['🏆 오늘의 리더보드'];
+                    rows.slice(0, 5).forEach((r, i) => lines.push(`${medals[i] || '🏅'} ${r.agent} ${r.executingCount}`));
+                    leaderboardTextObj.setText(lines.join('\n'));
+                })
+                .catch(() => {
+                    if (leaderboardTextObj) leaderboardTextObj.setText('🏆 오늘의 리더보드\n로드 실패');
+                });
+        }
+
+        function fetchShop() {
+            const shopList = document.getElementById('shop-list');
+            fetch('/shop?t=' + Date.now(), { cache: 'no-store' })
+                .then(r => r.json())
+                .then(data => {
+                    if (!shopList) return;
+                    const items = Array.isArray(data.items) ? data.items : [];
+                    const purchases = data.purchases || {};
+                    const visitors = getMergedVisitors();
+                    const target = visitors.find(v => !v.isMain) || null;
+                    const aid = target ? target.agentId : '';
+                    const points = target && data.points ? (data.points[target.name] ?? 0) : 0;
+
+                    if (game && game.scene && game.scene.scenes && game.scene.scenes[0]) {
+                        const scene = game.scene.scenes[0];
+                        const ownedSet = new Set();
+                        Object.values(purchases).forEach(arr => { if (Array.isArray(arr)) arr.forEach(id => ownedSet.add(id)); });
+                        window.__shopDecorations = window.__shopDecorations || {};
+                        const mapping = {
+                            cactus: { key: 'flowers', x: 560, y: 640, scale: 0.8 },
+                            poster2: { key: 'posters', x: 1080, y: 120, scale: 0.7 },
+                            fancy_desk: { key: 'new_desk', x: 280, y: 360, scale: 0.9 }
+                        };
+                        Object.entries(mapping).forEach(([id, conf]) => {
+                            const ex = window.__shopDecorations[id];
+                            if (ownedSet.has(id)) {
+                                if (!ex && scene.textures.exists(conf.key)) {
+                                    window.__shopDecorations[id] = scene.add.image(conf.x, conf.y, conf.key).setScale(conf.scale).setDepth(30);
+                                }
+                            } else if (ex) {
+                                ex.destroy();
+                                delete window.__shopDecorations[id];
+                            }
+                        });
+                    }
+
+                    shopList.innerHTML = `<div style="color:#9ca3af;">선택 에이전트: ${target ? escapeHtml(target.name) : '없음'} · 포인트 ${points}</div>` + items.map(item => {
+                        const owned = aid && Array.isArray(purchases[aid]) && purchases[aid].includes(item.id);
+                        return `<div style="border:1px solid #3b4252;border-radius:6px;padding:8px;display:flex;justify-content:space-between;align-items:center;"><div><div>${item.name}</div><div style="font-size:11px;color:#9ca3af;">${item.price}pt · ${item.type}</div></div><button ${(!aid || owned) ? 'disabled' : ''} onclick="buyShopItem('${aid}','${item.id}')" style="background:${owned ? '#374151' : '#e94560'};color:#fff;border:none;border-radius:4px;padding:6px 8px;cursor:pointer;">${owned ? '보유중' : '구매'}</button></div>`;
+                    }).join('');
+                })
+                .catch(() => { if (shopList) shopList.innerHTML = '<div>상점 로드 실패</div>'; });
+        }
+
+        function buyShopItem(agentId, itemId) {
+            fetch('/shop/buy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agentId, itemId })
+            }).then(r => r.json()).then(data => {
+                if (!data.ok) {
+                    alert(data.msg || '구매 실패');
+                    return;
+                }
+                fetchShop();
+                fetchGuestAgents();
+            }).catch(() => alert('구매 실패'));
+        }
+
         const STATES = {
             idle: { name: '대기중', area: 'breakroom' },
             writing: { name: '작업중', area: 'writing' },
@@ -572,6 +815,11 @@
         };
 
         let game, star, sofa, serverroom, areas = {}, currentState = 'idle', pendingDesiredState = null, statusText, lastFetch = 0, lastBlink = 0, lastBubble = 0, targetX = 660, targetY = 170, bubble = null, typewriterText = '', typewriterTarget = '', typewriterIndex = 0, lastTypewriter = 0, syncAnimSprite = null, catBubble = null;
+        let officeSocket = null;
+        let historyListEl = null;
+        let historyAgentFilterEl = null;
+        let pingResults = {};
+        let guestDetailCache = {};
         let isMoving = false;
         let waypoints = []; // list of (x,y) to walk through in order
         let lastWanderAt = 0;
@@ -579,19 +827,40 @@
         let coordsOverlay, coordsDisplay, coordsToggle;
         let showCoords = false;
         let guestAgents = [];
-        let guestSprites = {}; // agentId -> {sprite, nameText}
+        let guestSprites = {}; // agentId -> {sprite, nameText, levelBadge, comboBadge, fireBadge, basePos, state, errorMark}
         let guestBubbles = {}; // agentId -> bubble container
         const GUEST_AVATARS = ['guest_role_1','guest_role_2','guest_role_3','guest_role_4','guest_role_5','guest_role_6'];
-        let guestTweens = {};  // agentId -> {move, name}
+        let guestTweens = {};  // agentId -> {move, name, mark}
+        let guestIdleWalkTimers = {}; // agentId -> timer event
+
+        // 고정 스폰/기본 대기 구역(왕천재는 기존 메인 로직 유지)
+        const AGENT_IDLE_BASE_POSITIONS = {
+            ultraman: { x: 320, y: 430 },   // 책상 옆 바닥
+            ttolttoli: { x: 500, y: 480 },  // 중앙 바닥
+            kimyangi: { x: 660, y: 440 },   // 커피머신 근처 바닥
+            kadath: { x: 860, y: 380 },     // 오른쪽 바닥
+            thor: { x: 140, y: 520 }        // 왼쪽 하단 고양이 근처
+        };
+
+        const GUEST_STATE_ZONE_BASE = {
+            executing: { x: 320, y: 430 },   // 책상 앞
+            writing: { x: 260, y: 420 },      // 책상 왼쪽
+            researching: { x: 400, y: 450 },  // 중앙 바닥
+            syncing: { x: 600, y: 450 },      // 중앙 오른쪽
+            error: { x: 900, y: 420 }         // 서버룸 앞 바닥
+        };
         let hiddenDemoNames = new Set();
         const DEMO_MODE = new URLSearchParams(window.location.search).get('demo') === '1';
-        const FETCH_INTERVAL = 2000;
         const GUEST_AGENTS_FETCH_INTERVAL = 3500;
         const BLINK_INTERVAL = 2500;
         const BUBBLE_INTERVAL = 8000;
         const CAT_BUBBLE_INTERVAL = 18000; // cat bubble much less frequent
         let lastCatBubble = 0;
         let lastGuestAgentsFetch = 0;
+        let lastMissionsFetch = 0;
+        let lastLeaderboardFetch = 0;
+        let lastShopFetch = 0;
+        let leaderboardTextObj = null;
         let lastGuestBubbleAt = 0;
         const TYPEWRITER_DELAY = 50;
         let lastSeenGuestIds = new Set(); // 用于检测新加入的访客，触发欢迎气泡
@@ -603,7 +872,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ state, detail })
-            }).then(() => fetchStatus());
+            });
         }
 
         // Guest Agent 퇴장
@@ -612,6 +881,8 @@
             if (target && guestSprites[target.agentId]) {
                 guestSprites[target.agentId].sprite.destroy();
                 guestSprites[target.agentId].nameText.destroy();
+                if (guestSprites[target.agentId].levelBadge) guestSprites[target.agentId].levelBadge.destroy();
+                if (guestSprites[target.agentId].fireBadge) guestSprites[target.agentId].fireBadge.destroy();
                 delete guestSprites[target.agentId];
             }
             if (target && guestBubbles[target.agentId]) {
@@ -631,6 +902,8 @@
                     if (agentId && guestSprites[agentId]) {
                         guestSprites[agentId].sprite.destroy();
                         guestSprites[agentId].nameText.destroy();
+                        if (guestSprites[agentId].levelBadge) guestSprites[agentId].levelBadge.destroy();
+                        if (guestSprites[agentId].fireBadge) guestSprites[agentId].fireBadge.destroy();
                         delete guestSprites[agentId];
                     }
                     if (agentId && guestBubbles[agentId]) {
@@ -739,7 +1012,13 @@
 
                 const statusText = statusMap[authStatus] || authStatus;
                 const stateText = stateMap[state] || state;
-                const subtitle = `${statusText} · ${stateText}`;
+                const ping = pingResults[name] || pingResults[agent.agentId] || null;
+                const pingText = ping ? (ping.alive ? `✅ ${ping.ms ?? '-'}ms` : '❌ timeout') : '⏳ ping';
+                const lv = Number(agent.level || 1);
+                const title = agent.title || '인턴';
+                const combo = Number(agent.combo || 0);
+                const comboText = combo > 0 ? ` · 🔥 ${combo}콤보` : '';
+                const subtitle = `${statusText} · ${stateText} · Lv.${lv} ${title}${comboText}`;
 
                 const pendingActions = `<button onclick="alert('스킬 교환 기능 개발중')">스킬 교환</button><button class="leave-btn" onclick="leaveGuestAgent('${agent.agentId}','${name}')">퇴장</button>`;
 
@@ -747,7 +1026,7 @@
                   <div class="guest-agent-item" data-name="${name}">
                     <div>
                       <div class="guest-agent-name">${name}</div>
-                      <div style="font-size:11px;color:#cbd5e1;">${subtitle}</div>
+                      <div style="font-size:11px;color:#cbd5e1;">${subtitle}</div><div class="ping-badge">${pingText}</div>
                     </div>
                     <div class="guest-agent-buttons">
                       ${pendingActions}
@@ -801,43 +1080,99 @@
             return arr[idx % arr.length];
         }
 
+        function getGuestRoleKey(agent) {
+            const id = String(agent?.agentId || '').toLowerCase();
+            const name = String(agent?.name || '').toLowerCase();
+            if (id.includes('ultraman') || name.includes('울트라맨')) return 'ultraman';
+            if (id.includes('ttolttoli') || name.includes('똘똘이')) return 'ttolttoli';
+            if (id.includes('kimyangi') || name.includes('김양이')) return 'kimyangi';
+            if (id.includes('kadath') || name.includes('카다스')) return 'kadath';
+            if (id.includes('thor') || name.includes('토르')) return 'thor';
+            return null;
+        }
+
+        function getAgentBasePosition(agent, idx = 0) {
+            const role = getGuestRoleKey(agent);
+            if (role && AGENT_IDLE_BASE_POSITIONS[role]) return AGENT_IDLE_BASE_POSITIONS[role];
+            return getAreaPoint('breakroom', idx);
+        }
+
+        function getGuestTargetPosition(agent, idx = 0) {
+            const state = normalizeState(agent?.state || 'idle');
+            if (state === 'idle') {
+                return getAgentBasePosition(agent, idx);
+            }
+            if (state === 'error') {
+                return GUEST_STATE_ZONE_BASE.error;
+            }
+            return GUEST_STATE_ZONE_BASE[state] || GUEST_STATE_ZONE_BASE.executing;
+        }
+
+        function stopIdleWalk(agentId) {
+            const t = guestIdleWalkTimers[agentId];
+            if (t) {
+                try { t.remove(false); } catch (e) {}
+                delete guestIdleWalkTimers[agentId];
+            }
+        }
+
+        function startIdleWalk(agentId) {
+            const g = guestSprites[agentId];
+            if (!g || !g.basePos) return;
+            stopIdleWalk(agentId);
+            const tick = () => {
+                const current = guestSprites[agentId];
+                if (!current || current.state !== 'idle' || !current.basePos) return;
+                const dx = (Math.random() - 0.5) * 40;
+                const dy = (Math.random() - 0.5) * 20;
+                const tx = current.basePos.x + dx;
+                const ty = current.basePos.y + dy;
+                if (guestTweens[agentId]?.move) guestTweens[agentId].move.stop();
+                if (guestTweens[agentId]?.name) guestTweens[agentId].name.stop();
+                if (guestTweens[agentId]?.mark) guestTweens[agentId].mark.stop();
+
+                const yOffset = current.yOffset || 0;
+                const nameOffsetY = current.nameOffsetY || 120;
+                const moveTween = game.tweens.add({ targets: current.sprite, x: tx, y: ty + yOffset, duration: 2000, ease: 'Sine.easeInOut' });
+                const nameTween = game.tweens.add({ targets: current.nameText, x: tx, y: (ty + yOffset) - nameOffsetY, duration: 2000, ease: 'Sine.easeInOut' });
+                let markTween = null;
+                if (current.errorMark) {
+                    markTween = game.tweens.add({ targets: current.errorMark, x: tx + 26, y: (ty + yOffset) - (nameOffsetY + 6), duration: 2000, ease: 'Sine.easeInOut' });
+                }
+                guestTweens[agentId] = { move: moveTween, name: nameTween, mark: markTween };
+            };
+            tick();
+            const delay = 3000 + Math.floor(Math.random() * 2000);
+            guestIdleWalkTimers[agentId] = game.time.addEvent({ delay, loop: true, callback: tick });
+        }
+
         function renderGuestAgentsInScene() {
             if (!game) return;
             const visitors = getMergedVisitors();
             const seenIds = new Set();
-            let idxBreak = 0, idxWrite = 0, idxError = 0;
 
-            visitors.forEach(agent => {
+            visitors.forEach((agent, idx) => {
                 const id = agent.agentId;
                 seenIds.add(id);
 
                 const isDemo = !!agent.isDemo || (DEMO_MODE && (id === 'demo_ttolttoli' || id === 'demo_kimyangi' || agent.name === '똘똘이' || agent.name === '김양이'));
-                const area = agent.area || (agent.state === 'error' ? 'error' : (agent.state === 'idle' ? 'breakroom' : 'writing'));
-
-                const idx = area === 'breakroom' ? idxBreak++ : area === 'error' ? idxError++ : idxWrite++;
-                const p = isDemo
-                    ? randomPointInRect(getAreaRect(area))
-                    : getAreaPoint(area, idx);
+                const state = normalizeState(agent.state || 'idle');
+                const p = isDemo ? randomPointInRect(getAreaRect(state === 'error' ? 'error' : (state === 'idle' ? 'breakroom' : 'writing'))) : getGuestTargetPosition(agent, idx);
 
                 if (!guestSprites[id]) {
-                    // 优先用图标：demo visitor 有专门映射
                     let sprite;
                     const isDemoNika = DEMO_MODE && (agent.agentId === 'demo_ttolttoli' || agent.name === '똘똘이');
                     const isDemoMercury = DEMO_MODE && (agent.agentId === 'demo_kimyangi' || agent.name === '김양이');
-                    
+
                     if (isDemoNika && game.textures.exists('demo_kimyangi')) {
-                        // 交换映射：尼卡使用 demo_kimyangi
                         sprite = game.add.image(p.x, p.y, 'demo_kimyangi').setOrigin(0.5, 1).setScale(1.10);
                     } else if (isDemoMercury && game.textures.exists('demo_ttolttoli')) {
-                        // 交换映射：水星使用 demo_ttolttoli
                         sprite = game.add.image(p.x, p.y, 'demo_ttolttoli').setOrigin(0.5, 1).setScale(1.10);
                     } else if ((agent.name === '똘똘이') && game.textures.exists('guestagent1')) {
                         sprite = game.add.image(p.x, p.y, 'guestagent1').setOrigin(0.5, 1).setScale(1.15);
                     } else if ((agent.name === '김양이') && game.textures.exists('guestagent2')) {
                         sprite = game.add.image(p.x, p.y, 'guestagent2').setOrigin(0.5, 1).setScale(1.05);
                     } else {
-                        // 非 demo 访客：优先用动画精灵（guest_anim_x），其次静态图，兜底星星
-                        // 先确定角色索引（1-6）
                         let animIdx = agent.avatar
                             ? parseInt((agent.avatar.match(/_(\d+)$/) || [])[1] || '0', 10)
                             : 0;
@@ -870,16 +1205,15 @@
                             }
                         }
                     }
+
                     sprite.setDepth(2600);
                     if (DEMO_MODE && (agent.agentId === 'demo_kimyangi' || agent.name === '김양이')) {
                         sprite.y = sprite.y + 10;
                     }
 
-                    // demo 水星下移 10px（仅 demo_kimyangi）
                     const yOffset = (DEMO_MODE && (agent.agentId === 'demo_kimyangi' || agent.name === '김양이')) ? 10 : 0;
-
-                    const nameTextY = isDemo ? ((p.y + yOffset) - 80) : ((p.y + yOffset) - 120);
-                    const nameText = game.add.text(p.x, nameTextY, agent.name || '에이전트', {
+                    const nameOffsetY = isDemo ? 80 : 120;
+                    const nameText = game.add.text(p.x, (p.y + yOffset) - nameOffsetY, agent.name || '에이전트', {
                         fontFamily: 'ArkPixel, monospace',
                         fontSize: isDemo ? '16px' : '15px',
                         fill: '#ffffff',
@@ -888,55 +1222,87 @@
                     }).setOrigin(0.5);
                     nameText.setDepth(2601);
 
-                    guestSprites[id] = { sprite, nameText };
+                    const errorMark = game.add.text(p.x + 26, (p.y + yOffset) - (nameOffsetY + 6), '❌', {
+                        fontFamily: 'ArkPixel, monospace',
+                        fontSize: '16px',
+                        fill: '#ff4d4f',
+                        stroke: '#000',
+                        strokeThickness: 2
+                    }).setOrigin(0.5);
+                    errorMark.setDepth(2602);
+                    errorMark.setVisible(state === 'error');
+
+                    const levelBadge = game.add.text(p.x, (p.y + yOffset) - (nameOffsetY + 24), `Lv.${Number(agent.level || 1)}`, {
+                        fontFamily: 'ArkPixel, monospace',
+                        fontSize: '12px',
+                        fill: '#ffd700',
+                        stroke: '#000',
+                        strokeThickness: 3
+                    }).setOrigin(0.5);
+                    levelBadge.setDepth(2603);
+
+                    const fireBadge = game.add.text(p.x + 28, (p.y + yOffset) - (nameOffsetY + 28), '🔥', {
+                        fontFamily: 'ArkPixel, monospace',
+                        fontSize: '14px'
+                    }).setOrigin(0.5);
+                    fireBadge.setDepth(2604);
+                    fireBadge.setVisible(Number(agent.combo || 0) >= 5);
+
+                    guestSprites[id] = { sprite, nameText, levelBadge, fireBadge, errorMark, basePos: getAgentBasePosition(agent, idx), state, yOffset, nameOffsetY };
+                }
+
+                const g = guestSprites[id];
+                g.basePos = getAgentBasePosition(agent, idx);
+                g.state = state;
+
+                if (guestTweens[id]?.move) guestTweens[id].move.stop();
+                if (guestTweens[id]?.name) guestTweens[id].name.stop();
+                if (guestTweens[id]?.mark) guestTweens[id].mark.stop();
+                if (guestTweens[id]?.level) guestTweens[id].level.stop();
+                if (guestTweens[id]?.fire) guestTweens[id].fire.stop();
+
+                const duration = 850;
+                const ease = 'Sine.easeInOut';
+                const yOffset = g.yOffset || 0;
+                const nameOffsetY = g.nameOffsetY || 120;
+                const moveTween = game.tweens.add({ targets: g.sprite, x: p.x, y: p.y + yOffset, duration, ease });
+                const nameTween = game.tweens.add({ targets: g.nameText, x: p.x, y: (p.y + yOffset) - nameOffsetY, duration, ease });
+                let markTween = null;
+                let levelTween = null;
+                let fireTween = null;
+                if (g.errorMark) {
+                    g.errorMark.setVisible(state === 'error');
+                    markTween = game.tweens.add({ targets: g.errorMark, x: p.x + 26, y: (p.y + yOffset) - (nameOffsetY + 6), duration, ease });
+                }
+                if (g.levelBadge) {
+                    g.levelBadge.setText(`Lv.${Number(agent.level || 1)}`);
+                    levelTween = game.tweens.add({ targets: g.levelBadge, x: p.x, y: (p.y + yOffset) - (nameOffsetY + 24), duration, ease });
+                }
+                if (g.fireBadge) {
+                    g.fireBadge.setVisible(Number(agent.combo || 0) >= 5);
+                    fireTween = game.tweens.add({ targets: g.fireBadge, x: p.x + 28, y: (p.y + yOffset) - (nameOffsetY + 28), duration, ease });
+                }
+                guestTweens[id] = { move: moveTween, name: nameTween, mark: markTween, level: levelTween, fire: fireTween };
+
+                g.nameText.setText(agent.name || '에이전트');
+
+                if (!isDemo && state === 'idle') {
+                    startIdleWalk(id);
                 } else {
-                    const g = guestSprites[id];
-                    const yOffset = (DEMO_MODE && (agent.agentId === 'demo_kimyangi' || agent.name === '김양이')) ? 10 : 0;
-
-                    // demo：平滑移动（避免闪现）；非 demo：保持稳定位置（避免轮询抖动）
-                    if (isDemo) {
-                        // kill previous tweens for this id
-                        if (guestTweens[id] && guestTweens[id].move) {
-                            guestTweens[id].move.stop();
-                        }
-                        if (guestTweens[id] && guestTweens[id].name) {
-                            guestTweens[id].name.stop();
-                        }
-
-                        const duration = 2000 + Math.floor(Math.random() * 1000); // 2~3s 走路感
-                        const ease = 'Sine.easeInOut';
-
-                        const moveTween = game.tweens.add({
-                            targets: g.sprite,
-                            x: p.x,
-                            y: p.y + yOffset,
-                            duration,
-                            ease
-                        });
-                        const nameTween = game.tweens.add({
-                            targets: g.nameText,
-                            x: p.x,
-                            y: (p.y + yOffset) - 80,
-                            duration,
-                            ease
-                        });
-                        guestTweens[id] = { move: moveTween, name: nameTween };
-                    } else {
-                        g.sprite.x = p.x;
-                        g.sprite.y = p.y + yOffset;
-                        g.nameText.x = p.x;
-                        g.nameText.y = (p.y + yOffset) - 120;
-                    }
-
-                    g.nameText.setText(agent.name || '에이전트');
+                    stopIdleWalk(id);
                 }
             });
 
-            // 删除消失的 agent + 清理其气泡/tween
+            updateGuestDetailBubbles();
+
             Object.keys(guestSprites).forEach(id => {
                 if (!seenIds.has(id)) {
+                    stopIdleWalk(id);
                     guestSprites[id].sprite.destroy();
                     guestSprites[id].nameText.destroy();
+                    if (guestSprites[id].errorMark) guestSprites[id].errorMark.destroy();
+                    if (guestSprites[id].levelBadge) guestSprites[id].levelBadge.destroy();
+                    if (guestSprites[id].fireBadge) guestSprites[id].fireBadge.destroy();
                     delete guestSprites[id];
                     if (guestBubbles[id]) {
                         guestBubbles[id].destroy();
@@ -945,6 +1311,9 @@
                     if (guestTweens[id]) {
                         try { guestTweens[id].move && guestTweens[id].move.stop(); } catch(e) {}
                         try { guestTweens[id].name && guestTweens[id].name.stop(); } catch(e) {}
+                        try { guestTweens[id].mark && guestTweens[id].mark.stop(); } catch(e) {}
+                        try { guestTweens[id].level && guestTweens[id].level.stop(); } catch(e) {}
+                        try { guestTweens[id].fire && guestTweens[id].fire.stop(); } catch(e) {}
                         delete guestTweens[id];
                     }
                 }
@@ -976,6 +1345,7 @@
             const thoughts = statusThoughtsMap[agentState] || statusThoughtsMap.idle;
             const text = (demoVisitor && demoVisitor.bubbleText) ? demoVisitor.bubbleText : thoughts[Math.floor(Math.random() * thoughts.length)];
 
+            if (guestBubbles[id] && guestBubbles[id].__detailBubble) return;
             if (guestBubbles[id]) {
                 guestBubbles[id].destroy();
                 delete guestBubbles[id];
@@ -1096,6 +1466,61 @@
             } catch (e) { console.error('강제 버블 표시 실패:', e); }
         }
 
+        function fetchPingAgents() {
+            return fetch('/ping-agents?t=' + Date.now(), { cache: 'no-store' })
+                .then(r => r.json())
+                .then(data => {
+                    pingResults = data || {};
+                    renderGuestAgentList();
+                })
+                .catch(() => {});
+        }
+
+        function updateGuestDetailBubbles() {
+            const activeStates = new Set(['executing', 'writing', 'syncing']);
+            (guestAgents || []).forEach(agent => {
+                const id = agent.agentId;
+                const g = guestSprites[id];
+                if (!g) return;
+                const state = normalizeState(agent.state || 'idle');
+                const detail = (agent.detail || '').trim();
+                const shouldShow = activeStates.has(state) && detail;
+
+                if (!shouldShow) {
+                    if (guestBubbles[id] && guestBubbles[id].__detailBubble) {
+                        guestBubbles[id].destroy();
+                        delete guestBubbles[id];
+                    }
+                    guestDetailCache[id] = { state, detail: '' };
+                    return;
+                }
+
+                const prev = guestDetailCache[id] || {};
+                if (prev.state === state && prev.detail === detail && guestBubbles[id] && guestBubbles[id].__detailBubble) {
+                    return;
+                }
+
+                if (guestBubbles[id]) {
+                    guestBubbles[id].destroy();
+                    delete guestBubbles[id];
+                }
+
+                const bx = g.sprite.x;
+                const by = (g.nameText ? g.nameText.y : (g.sprite.y - 140)) - 24;
+                const text = detail.length > 24 ? detail.slice(0, 24) + '…' : detail;
+                const w = Math.max(90, text.length * 9 + 18);
+                const bg = game.add.rectangle(bx, by, w, 26, 0xffffff, 0.95);
+                bg.setStrokeStyle(2, 0x000000);
+                const txt = game.add.text(bx, by, text, { fontFamily: 'ArkPixel, monospace', fontSize: (IS_TOUCH_DEVICE ? 13 : 11) + 'px', fill: '#000' }).setOrigin(0.5);
+                const bubble = game.add.container(0, 0, [bg, txt]);
+                bubble.setDepth(2750);
+                bubble.__followAgentId = id;
+                bubble.__detailBubble = true;
+                guestBubbles[id] = bubble;
+                guestDetailCache[id] = { state, detail };
+            });
+        }
+
         function fetchGuestAgents() {
             // demo 随机状态先更新（不依赖后端）
             maybeRandomizeDemoVisitors();
@@ -1146,6 +1571,7 @@
 
                     renderGuestAgentList();
                     renderGuestAgentsInScene();
+                    updateGuestDetailBubbles();
                 })
                 .catch(error => {
                     console.error('에이전트 목록 조회 실패:', error);
@@ -1481,6 +1907,15 @@
             // Debug: expose star sprite too (for path calibration / visuals)
             window.starSprite = star;
 
+            leaderboardTextObj = this.add.text(1035, 56, '🏆 오늘의 리더보드\n로딩중...', {
+                fontFamily: 'ArkPixel, monospace',
+                fontSize: '14px',
+                fill: '#ffd700',
+                stroke: '#000',
+                strokeThickness: 3,
+                align: 'left'
+            }).setOrigin(0.5, 0).setDepth(5000);
+
             statusText = document.getElementById('status-text');
             coordsOverlay = document.getElementById('coords-overlay');
             coordsDisplay = document.getElementById('coords-display');
@@ -1669,13 +2104,34 @@
             // 加载昨日 memo
             loadMemo();
 
+            historyListEl = document.getElementById('history-list');
+            historyAgentFilterEl = document.getElementById('historyAgentFilter');
+            if (historyAgentFilterEl) historyAgentFilterEl.addEventListener('change', fetchHistory);
+            initOfficeSocket();
             fetchStatus();
             fetchGuestAgents();
+            fetchPingAgents();
+            setInterval(fetchPingAgents, 30000);
+            fetchHistory();
+            fetchMissions();
+            fetchLeaderboard();
+
+            const shopOverlay = document.getElementById('shop-overlay');
+            const shopOpenBtn = document.getElementById('shop-open-btn');
+            const shopCloseBtn = document.getElementById('shop-close-btn');
+            if (shopOpenBtn) shopOpenBtn.addEventListener('click', () => {
+                if (shopOverlay) shopOverlay.style.display = 'flex';
+                fetchShop();
+            });
+            if (shopCloseBtn) shopCloseBtn.addEventListener('click', () => { if (shopOverlay) shopOverlay.style.display = 'none'; });
+            if (shopOverlay) shopOverlay.addEventListener('click', (e) => { if (e.target === shopOverlay) shopOverlay.style.display = 'none'; });
         }
 
         function update(time) {
-            if (time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
             if (time - lastGuestAgentsFetch > GUEST_AGENTS_FETCH_INTERVAL) { fetchGuestAgents(); lastGuestAgentsFetch = time; }
+            if (time - lastMissionsFetch > 30000) { fetchMissions(); lastMissionsFetch = time; }
+            if (time - lastLeaderboardFetch > 30000) { fetchLeaderboard(); lastLeaderboardFetch = time; }
+            if (time - lastShopFetch > 30000) { fetchShop(); lastShopFetch = time; }
 
             // 兜底：非 idle 时确保机房动画在播，idle 时静止
             const effectiveStateForServer = pendingDesiredState || currentState;
@@ -1787,110 +2243,111 @@
             return s;
         }
 
+        function applyStateData(data) {
+            const nextState = normalizeState(data?.state);
+            const stateInfo = STATES[nextState] || STATES.idle;
+            const changed = (pendingDesiredState === null) && (nextState !== currentState);
+            const nextLine = '[' + stateInfo.name + '] ' + ((data && data.detail) || '...');
+            if (changed) {
+                typewriterTarget = nextLine;
+                typewriterText = '';
+                typewriterIndex = 0;
+
+                pendingDesiredState = null;
+                currentState = nextState;
+
+                if (nextState === 'idle') {
+                    if (game.textures.exists('sofa_busy')) {
+                        sofa.setTexture('sofa_busy');
+                        sofa.anims.play('sofa_busy', true);
+                    }
+                    star.setVisible(false);
+                    star.anims.stop();
+                    if (window.starWorking) {
+                        window.starWorking.setVisible(false);
+                        window.starWorking.anims.stop();
+                    }
+                } else if (nextState === 'error' || nextState === 'syncing') {
+                    sofa.anims.stop();
+                    sofa.setTexture('sofa_idle');
+                    star.setVisible(false);
+                    star.anims.stop();
+                    if (window.starWorking) {
+                        window.starWorking.setVisible(false);
+                        window.starWorking.anims.stop();
+                    }
+                } else {
+                    sofa.anims.stop();
+                    sofa.setTexture('sofa_idle');
+                    star.setVisible(false);
+                    star.anims.stop();
+                    if (window.starWorking) {
+                        window.starWorking.setVisible(true);
+                        window.starWorking.anims.play('star_working', true);
+                    }
+                }
+
+                if (serverroom) {
+                    if (nextState === 'idle') {
+                        serverroom.anims.stop();
+                        serverroom.setFrame(0);
+                    } else {
+                        serverroom.anims.play('serverroom_on', true);
+                    }
+                }
+
+                if (syncAnimSprite) {
+                    if (nextState === 'syncing') {
+                        if (!syncAnimSprite.anims.isPlaying || syncAnimSprite.anims.currentAnim?.key !== 'sync_anim') {
+                            syncAnimSprite.anims.play('sync_anim', true);
+                        }
+                    } else {
+                        syncAnimSprite.anims.stop();
+                        syncAnimSprite.setFrame(0);
+                    }
+                }
+            } else {
+                if (!typewriterTarget || typewriterTarget !== nextLine) {
+                    typewriterTarget = nextLine;
+                    typewriterText = '';
+                    typewriterIndex = 0;
+                }
+            }
+        }
+
         function fetchStatus() {
             fetch('/status')
                 .then(response => response.json())
-                .then(data => {
-                    const nextState = normalizeState(data.state);
-                    const stateInfo = STATES[nextState] || STATES.idle;
-                    // If we're mid-transition, don't restart the path every poll
-                    const changed = (pendingDesiredState === null) && (nextState !== currentState);
-                    const nextLine = '[' + stateInfo.name + '] ' + (data.detail || '...');
-                    if (changed) {
-                        typewriterTarget = nextLine;
-                        typewriterText = '';
-                        typewriterIndex = 0;
-
-                        // Set state immediately (no waypoints/path movement)
-                        pendingDesiredState = null;
-                        currentState = nextState;
-
-                        // Idle: sofa animation
-                        if (nextState === 'idle') {
-                            // Sofa
-                            if (game.textures.exists('sofa_busy')) {
-                                sofa.setTexture('sofa_busy');
-                                sofa.anims.play('sofa_busy', true);
-                            }
-                            // Hide moving star, hide desk star
-                            star.setVisible(false);
-                            star.anims.stop();
-                            if (window.starWorking) {
-                                window.starWorking.setVisible(false);
-                                window.starWorking.anims.stop();
-                            }
-                        } else if (nextState === 'error') {
-                            // Error: no working animation at desk
-                            sofa.anims.stop();
-                            sofa.setTexture('sofa_idle');
-                            star.setVisible(false);
-                            star.anims.stop();
-                            if (window.starWorking) {
-                                window.starWorking.setVisible(false);
-                                window.starWorking.anims.stop();
-                            }
-                        } else if (nextState === 'syncing') {
-                            // Syncing: also no working animation at desk
-                            sofa.anims.stop();
-                            sofa.setTexture('sofa_idle');
-                            star.setVisible(false);
-                            star.anims.stop();
-                            if (window.starWorking) {
-                                window.starWorking.setVisible(false);
-                                window.starWorking.anims.stop();
-                            }
-                        } else {
-                            // Non-idle non-error: starWorking animation at desk
-                            sofa.anims.stop();
-                            sofa.setTexture('sofa_idle');
-                            // Hide moving star, show desk star
-                            star.setVisible(false);
-                            star.anims.stop();
-                            if (window.starWorking) {
-                                window.starWorking.setVisible(true);
-                                window.starWorking.anims.play('star_working', true);
-                            }
-                        }
-
-                        // Server room logic:
-                        if (serverroom) {
-                            if (nextState === 'idle') {
-                                serverroom.anims.stop();
-                                serverroom.setFrame(0);
-                            } else {
-                                serverroom.anims.play('serverroom_on', true);
-                            }
-                        }
-
-                        // Sync animation logic:
-                        // default: frame 0
-                        // state=syncing: play from frame 1
-                        if (syncAnimSprite) {
-                            if (nextState === 'syncing') {
-                                if (!syncAnimSprite.anims.isPlaying || syncAnimSprite.anims.currentAnim?.key !== 'sync_anim') {
-                                    syncAnimSprite.anims.play('sync_anim', true);
-                                }
-                            } else {
-                                syncAnimSprite.anims.stop();
-                                syncAnimSprite.setFrame(0);
-                            }
-                        }
-                    } else {
-                        if (!typewriterTarget || typewriterTarget !== nextLine) {
-                            typewriterTarget = nextLine;
-                            typewriterText = '';
-                            typewriterIndex = 0;
-                        }
-                    }
-                })
-                .catch(error => {
+                .then(data => applyStateData(data))
+                .catch(() => {
                     typewriterTarget = '연결 실패, 재시도 중...';
                     typewriterText = '';
                     typewriterIndex = 0;
                 });
         }
 
+        function initOfficeSocket() {
+            if (typeof io === 'undefined') return;
+            officeSocket = io();
+            officeSocket.on('state_update', (payload) => {
+                if (payload && payload.main) {
+                    applyStateData(payload.main);
+                }
+                if (payload && Array.isArray(payload.agents)) {
+                    guestAgents = payload.agents.filter(a => !a.isMain);
+                    renderGuestAgentList();
+                    renderGuestAgentsInScene();
+                }
+                fetchHistory();
+            });
+            officeSocket.on('connect_error', () => {
+                fetchStatus();
+                fetchGuestAgents();
+            });
+        }
+
         function moveStar(time) {
+
             // Use pending state if available (for target area during transition)
             const effectiveState = pendingDesiredState || currentState;
             const stateInfo = STATES[effectiveState] || STATES.idle;
