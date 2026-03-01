@@ -10,7 +10,7 @@ import threading
 
 # Paths (project-relative, no hardcoded absolute paths)
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MEMORY_DIR = os.path.join(os.path.dirname(ROOT_DIR), "memory")
+MEMORY_DIR = "/Users/hyoseop1231/.openclaw/workspace/memory"
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 STATE_FILE = os.path.join(ROOT_DIR, "state.json")
 AGENTS_STATE_FILE = os.path.join(ROOT_DIR, "agents-state.json")
@@ -151,7 +151,7 @@ def add_no_cache_headers(response):
 # Default state
 DEFAULT_STATE = {
     "state": "idle",
-    "detail": "等待任务中...",
+    "detail": "대기중...",
     "progress": 0,
     "updated_at": datetime.now().isoformat()
 }
@@ -194,7 +194,7 @@ def load_state():
                 age = (datetime.now() - dt).total_seconds()
             if age > ttl:
                 state["state"] = "idle"
-                state["detail"] = "待命中（自动回到休息区）"
+                state["detail"] = "대기중 (자동으로 휴게 구역 복귀)"
                 state["progress"] = 0
                 state["updated_at"] = datetime.now().isoformat()
                 # persist the auto-idle so every client sees it consistently
@@ -253,10 +253,10 @@ def invite_page():
 DEFAULT_AGENTS = [
     {
         "agentId": "star",
-        "name": "Star",
+        "name": "왕천재",
         "isMain": True,
         "state": "idle",
-        "detail": "待命中，随时准备为你服务",
+        "detail": "대기중, 언제든 도와줄 준비 완료",
         "updated_at": datetime.now().isoformat(),
         "area": "breakroom",
         "source": "local",
@@ -267,10 +267,10 @@ DEFAULT_AGENTS = [
     },
     {
         "agentId": "npc1",
-        "name": "NPC 1",
+        "name": "울트라맨",
         "isMain": False,
         "state": "writing",
-        "detail": "在整理热点日报...",
+        "detail": "작업중...",
         "updated_at": datetime.now().isoformat(),
         "area": "writing",
         "source": "demo",
@@ -811,7 +811,8 @@ if __name__ == "__main__":
     print("Star Office UI - Backend State Service")
     print("=" * 50)
     print(f"State file: {STATE_FILE}")
-    print("Listening on: http://0.0.0.0:18791")
+    port = int(os.environ.get("PORT", 18795))
+    print(f"Listening on: http://0.0.0.0:{port}")
     print("=" * 50)
     
-    app.run(host="0.0.0.0", port=18791, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
