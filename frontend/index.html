@@ -141,6 +141,13 @@
             background: #4a4f5f;
             border-color: #e94560;
         }
+        #control-buttons button.active {
+            background: #e94560;
+            border-color: #ff6b80;
+            color: #fff;
+            font-weight: bold;
+            box-shadow: 0 0 8px #e9456066;
+        }
         /* Guest Agent 名单面板（右下角） */
         #guest-agent-panel {
             width: 360px;
@@ -486,10 +493,10 @@
         <div id="control-bar">
             <div id="control-bar-title">왕천재 상태</div>
             <div id="control-buttons">
-                <button onclick="setState('idle','대기중')">대기중</button>
-                <button onclick="setState('writing','작업중')">작업중</button>
-                <button onclick="setState('syncing','동기화중')">동기화중</button>
-                <button onclick="setState('error','에러')">에러</button>
+                <button data-state="idle" onclick="setState('idle','대기중')">대기중</button>
+                <button data-state="writing" onclick="setState('writing','작업중')">작업중</button>
+                <button data-state="syncing" onclick="setState('syncing','동기화중')">동기화중</button>
+                <button data-state="error" onclick="setState('error','에러')">에러</button>
             </div>
         </div>
 
@@ -520,10 +527,10 @@
         <div id="coords-display">X: 0 | Y: 0</div>
     </div>
     <button id="coords-toggle" style="position:fixed; top:calc(env(safe-area-inset-top, 0px) + 12px); right:12px; z-index:999999; padding:8px 10px; font-family:ArkPixel,monospace; font-size:13px; cursor:pointer; border:2px solid #333; border-radius:5px; background:#333; color:#fff;">
-        显示坐标
+        좌표 표시
     </button>
     <button id="pan-toggle" style="position:fixed; top:calc(env(safe-area-inset-top, 0px) + 12px); left:12px; z-index:999999; padding:8px 10px; font-family:ArkPixel,monospace; font-size:13px; cursor:pointer; border:2px solid #333; border-radius:5px; background:#333; color:#fff;">
-        移动视野
+        화면 이동
     </button>
 
     <button id="shop-open-btn" style="position:fixed;bottom:18px;right:18px;z-index:99999;padding:10px 12px;border:2px solid #e94560;border-radius:8px;background:#2c2f3a;color:#fff;font-family:ArkPixel,monospace;cursor:pointer;">🛒 상점</button>
@@ -702,12 +709,14 @@
                 .then(r => r.json())
                 .then(data => {
                     const missions = Array.isArray(data.missions) ? data.missions : [];
+                    const streak = data.streak || { current: 0, flame: '' };
                     if (!list) return;
                     if (!missions.length) {
                         list.innerHTML = '<div>미션 없음</div>';
                         return;
                     }
-                    list.innerHTML = missions.map(m => {
+                    const streakLine = `<div style="color:#f97316;">🔥 스트릭 ${streak.current || 0}일 ${streak.flame || ''}</div>`;
+                    list.innerHTML = streakLine + missions.map(m => {
                         const p = Math.max(0, Math.min(100, Math.round(((m.progress || 0) / Math.max(1, (m.target || 1))) * 100)));
                         const done = m.done ? '✅' : '▫️';
                         return `<div>${done} ${escapeHtml(m.title)} (${m.progress}/${m.target})<div style="height:6px;background:#111827;border-radius:99px;margin-top:2px;"><div style="height:100%;width:${p}%;background:${m.done ? '#22c55e' : '#e94560'};border-radius:99px;"></div></div></div>`;
@@ -828,6 +837,94 @@
         let showCoords = false;
         let guestAgents = [];
         let guestSprites = {}; // agentId -> {sprite, nameText, levelBadge, comboBadge, fireBadge, basePos, state, errorMark}
+        let missionPopupEl = null;
+
+        function getLevelTint(level) {
+            const lv = Number(level || 1);
+            if (lv >= 10) return 0xffd700; // gold
+            if (lv >= 5) return 0x4dabff;  // blue
+            return null; // default
+        }
+
+        function applyLevelStyleToSprite(sprite, level) {
+            const tint = getLevelTint(level);
+            if (!sprite) return;
+            try {
+                if (tint && typeof sprite.setTint === 'function') sprite.setTint(tint);
+                else if (typeof sprite.clearTint === 'function') sprite.clearTint();
+            } catch (e) {}
+        }
+
+        function showLevelUpEffect(agentId, level) {
+            const g = guestSprites[agentId];
+            if (!g || !game) return;
+            const x = g.sprite.x;
+            const y = g.sprite.y - 80;
+            const txt = game.add.text(x, y, 'LEVEL UP!', {
+                fontFamily: 'ArkPixel, monospace',
+                fontSize: '18px',
+                fill: '#ffd700',
+                stroke: '#000',
+                strokeThickness: 4
+            }).setOrigin(0.5).setDepth(5000);
+
+            const particles = [];
+            for (let i = 0; i < 14; i++) {
+                const c = game.add.circle(x, y + 10, 3, 0xffd700, 0.95).setDepth(4999);
+                particles.push(c);
+                const ang = (Math.PI * 2 * i) / 14;
+                const dist = 40 + Math.random() * 30;
+                game.tweens.add({
+                    targets: c,
+                    x: x + Math.cos(ang) * dist,
+                    y: y + 10 + Math.sin(ang) * dist,
+                    alpha: 0,
+                    duration: 700,
+                    onComplete: () => c.destroy()
+                });
+            }
+
+            game.tweens.add({
+                targets: txt,
+                y: y - 30,
+                alpha: 0,
+                duration: 900,
+                onComplete: () => txt.destroy()
+            });
+        }
+
+        function ensureMissionPopup() {
+            if (missionPopupEl) return missionPopupEl;
+            missionPopupEl = document.createElement('div');
+            missionPopupEl.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:120000;align-items:center;justify-content:center;';
+            missionPopupEl.innerHTML = '<div style="width:min(460px,92vw);background:#1f2430;border:2px solid #e94560;border-radius:10px;padding:12px;color:#fff;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><strong style="color:#ffd700;">📋 오늘의 미션 보드</strong><button id="mission-popup-close" style="background:#333;color:#fff;border:1px solid #555;border-radius:4px;padding:4px 8px;cursor:pointer;">닫기</button></div><div id="mission-popup-content" style="display:flex;flex-direction:column;gap:8px;font-size:12px;"></div></div>';
+            document.body.appendChild(missionPopupEl);
+            missionPopupEl.addEventListener('click', (e) => { if (e.target === missionPopupEl) missionPopupEl.style.display = 'none'; });
+            const closeBtn = missionPopupEl.querySelector('#mission-popup-close');
+            if (closeBtn) closeBtn.addEventListener('click', () => missionPopupEl.style.display = 'none');
+            return missionPopupEl;
+        }
+
+        function openMissionPopup() {
+            const el = ensureMissionPopup();
+            const content = el.querySelector('#mission-popup-content');
+            if (!content) return;
+            content.innerHTML = '<div>불러오는 중...</div>';
+            el.style.display = 'flex';
+            fetch('/missions?t=' + Date.now(), { cache: 'no-store' })
+                .then(r => r.json())
+                .then(data => {
+                    const missions = Array.isArray(data.missions) ? data.missions : [];
+                    const streak = data.streak || { current: 0, flame: '' };
+                    const streakLine = `<div style="color:#f97316;">스트릭: ${streak.current || 0}일 ${streak.flame || ''}</div>`;
+                    const rows = missions.map(m => {
+                        const p = Math.max(0, Math.min(100, Math.round(((m.progress || 0) / Math.max(1, (m.target || 1))) * 100)));
+                        return `<div><div>${m.done ? '✅' : '▫️'} ${m.title}</div><div style="height:6px;background:#111827;border-radius:99px;margin-top:2px;"><div style="height:100%;width:${p}%;background:${m.done ? '#22c55e' : '#e94560'};border-radius:99px;"></div></div></div>`;
+                    }).join('');
+                    content.innerHTML = streakLine + rows;
+                })
+                .catch(() => { content.innerHTML = '<div>미션 정보를 불러오지 못했습니다.</div>'; });
+        }
         let guestBubbles = {}; // agentId -> bubble container
         const GUEST_AVATARS = ['guest_role_1','guest_role_2','guest_role_3','guest_role_4','guest_role_5','guest_role_6'];
         let guestTweens = {};  // agentId -> {move, name, mark}
@@ -849,6 +946,73 @@
             syncing: { x: 600, y: 450 },      // 중앙 오른쪽
             error: { x: 900, y: 420 }         // 서버룸 앞 바닥
         };
+
+        // 픽셀 좌표 기반 보행 가능 구역(가구/벽 제외)
+        // 기준 좌표: 1280x720 월드 좌표
+        const WALKABLE_ZONES = {
+            breakroom:   [{ x: 460, y: 510, w: 390, h: 190 }],
+            writing:     [{ x: 460, y: 510, w: 390, h: 190 }],
+            researching: [{ x: 460, y: 510, w: 390, h: 190 }],
+            syncing:     [{ x: 460, y: 510, w: 390, h: 190 }],
+            executing:   [{ x: 460, y: 510, w: 390, h: 190 }],
+            error:       [{ x: 460, y: 510, w: 390, h: 190 }]
+        };
+
+        function zoneContains(zone, x, y) {
+            return x >= zone.x && x <= (zone.x + zone.w) && y >= zone.y && y <= (zone.y + zone.h);
+        }
+
+        function clampPointToZone(point, zone) {
+            return {
+                x: Math.max(zone.x, Math.min(zone.x + zone.w, point.x)),
+                y: Math.max(zone.y, Math.min(zone.y + zone.h, point.y))
+            };
+        }
+
+        function getWalkableZones(area) {
+            if (area && WALKABLE_ZONES[area] && WALKABLE_ZONES[area].length) return WALKABLE_ZONES[area];
+            return Object.values(WALKABLE_ZONES).flat();
+        }
+
+        function getNearestWalkablePoint(point, area) {
+            const zones = getWalkableZones(area);
+            if (!zones.length) return { x: point.x, y: point.y };
+
+            for (const zone of zones) {
+                if (zoneContains(zone, point.x, point.y)) {
+                    return { x: point.x, y: point.y };
+                }
+            }
+
+            let best = null;
+            let bestDistSq = Infinity;
+            for (const zone of zones) {
+                const c = clampPointToZone(point, zone);
+                const dx = c.x - point.x;
+                const dy = c.y - point.y;
+                const d2 = (dx * dx) + (dy * dy);
+                if (d2 < bestDistSq) {
+                    bestDistSq = d2;
+                    best = c;
+                }
+            }
+            return best || { x: point.x, y: point.y };
+        }
+
+        function getRandomWalkablePosition(area) {
+            const zones = getWalkableZones(area);
+            if (!zones.length) return { x: 640, y: 360 };
+            const zone = zones[Math.floor(Math.random() * zones.length)];
+            return {
+                x: zone.x + Math.random() * zone.w,
+                y: zone.y + Math.random() * zone.h
+            };
+        }
+
+        function clampPointToWalkable(point, area) {
+            return getNearestWalkablePoint(point, area);
+        }
+
         let hiddenDemoNames = new Set();
         const DEMO_MODE = new URLSearchParams(window.location.search).get('demo') === '1';
         const GUEST_AGENTS_FETCH_INTERVAL = 3500;
@@ -883,6 +1047,8 @@
                 guestSprites[target.agentId].nameText.destroy();
                 if (guestSprites[target.agentId].levelBadge) guestSprites[target.agentId].levelBadge.destroy();
                 if (guestSprites[target.agentId].fireBadge) guestSprites[target.agentId].fireBadge.destroy();
+                if (guestSprites[target.agentId].xpBarBg) guestSprites[target.agentId].xpBarBg.destroy();
+                if (guestSprites[target.agentId].xpBarFill) guestSprites[target.agentId].xpBarFill.destroy();
                 delete guestSprites[target.agentId];
             }
             if (target && guestBubbles[target.agentId]) {
@@ -904,6 +1070,8 @@
                         guestSprites[agentId].nameText.destroy();
                         if (guestSprites[agentId].levelBadge) guestSprites[agentId].levelBadge.destroy();
                         if (guestSprites[agentId].fireBadge) guestSprites[agentId].fireBadge.destroy();
+                        if (guestSprites[agentId].xpBarBg) guestSprites[agentId].xpBarBg.destroy();
+                        if (guestSprites[agentId].xpBarFill) guestSprites[agentId].xpBarFill.destroy();
                         delete guestSprites[agentId];
                     }
                     if (agentId && guestBubbles[agentId]) {
@@ -1037,16 +1205,13 @@
         }
 
         function getAreaRect(area) {
-            // 区域坐标（海辛提供，左上-右下；这里的 x/y 作为 sprite 底部锚点坐标来用）
-            // 休息区域范围（511,262）（841,621）
-            // 工作区域范围（190,526）（380,683）
-            // error 区域范围（932,275）（1109,327）
-            const rects = {
-                breakroom: { x1: 511, y1: 262, x2: 841, y2: 621 },
-                writing:   { x1: 190, y1: 526, x2: 380, y2: 683 },
-                error:     { x1: 932, y1: 275, x2: 1109, y2: 327 }
-            };
-            return rects[area] || rects.breakroom;
+            const zones = getWalkableZones(area);
+            if (!zones.length) return { x1: 0, y1: 0, x2: 1279, y2: 719 };
+            const x1 = Math.min(...zones.map(z => z.x));
+            const y1 = Math.min(...zones.map(z => z.y));
+            const x2 = Math.max(...zones.map(z => z.x + z.w));
+            const y2 = Math.max(...zones.map(z => z.y + z.h));
+            return { x1: Math.round(x1), y1: Math.round(y1), x2: Math.round(x2), y2: Math.round(y2) };
         }
 
         function randomInt(min, max) {
@@ -1100,12 +1265,13 @@
         function getGuestTargetPosition(agent, idx = 0) {
             const state = normalizeState(agent?.state || 'idle');
             if (state === 'idle') {
-                return getAgentBasePosition(agent, idx);
+                return clampPointToWalkable(getAgentBasePosition(agent, idx), 'breakroom');
             }
             if (state === 'error') {
-                return GUEST_STATE_ZONE_BASE.error;
+                return clampPointToWalkable(GUEST_STATE_ZONE_BASE.error, 'error');
             }
-            return GUEST_STATE_ZONE_BASE[state] || GUEST_STATE_ZONE_BASE.executing;
+            const base = GUEST_STATE_ZONE_BASE[state] || GUEST_STATE_ZONE_BASE.executing;
+            return clampPointToWalkable(base, state);
         }
 
         function stopIdleWalk(agentId) {
@@ -1123,10 +1289,9 @@
             const tick = () => {
                 const current = guestSprites[agentId];
                 if (!current || current.state !== 'idle' || !current.basePos) return;
-                const dx = (Math.random() - 0.5) * 40;
-                const dy = (Math.random() - 0.5) * 20;
-                const tx = current.basePos.x + dx;
-                const ty = current.basePos.y + dy;
+                const idlePos = getRandomWalkablePosition('breakroom');
+                const tx = idlePos.x;
+                const ty = idlePos.y;
                 if (guestTweens[agentId]?.move) guestTweens[agentId].move.stop();
                 if (guestTweens[agentId]?.name) guestTweens[agentId].name.stop();
                 if (guestTweens[agentId]?.mark) guestTweens[agentId].mark.stop();
@@ -1138,6 +1303,15 @@
                 let markTween = null;
                 if (current.errorMark) {
                     markTween = game.tweens.add({ targets: current.errorMark, x: tx + 26, y: (ty + yOffset) - (nameOffsetY + 6), duration: 2000, ease: 'Sine.easeInOut' });
+                }
+                if (current.levelBadge) {
+                    game.tweens.add({ targets: current.levelBadge, x: tx, y: (ty + yOffset) - (nameOffsetY + 24), duration: 2000, ease: 'Sine.easeInOut' });
+                }
+                if (current.xpBarBg) {
+                    game.tweens.add({ targets: current.xpBarBg, x: tx, y: (ty + yOffset) - (nameOffsetY + 10), duration: 2000, ease: 'Sine.easeInOut' });
+                }
+                if (current.xpBarFill) {
+                    game.tweens.add({ targets: current.xpBarFill, x: tx - 23, y: (ty + yOffset) - (nameOffsetY + 10), duration: 2000, ease: 'Sine.easeInOut' });
                 }
                 guestTweens[agentId] = { move: moveTween, name: nameTween, mark: markTween };
             };
@@ -1157,7 +1331,9 @@
 
                 const isDemo = !!agent.isDemo || (DEMO_MODE && (id === 'demo_ttolttoli' || id === 'demo_kimyangi' || agent.name === '똘똘이' || agent.name === '김양이'));
                 const state = normalizeState(agent.state || 'idle');
-                const p = isDemo ? randomPointInRect(getAreaRect(state === 'error' ? 'error' : (state === 'idle' ? 'breakroom' : 'writing'))) : getGuestTargetPosition(agent, idx);
+                const p = isDemo
+                    ? getRandomWalkablePosition(state === 'error' ? 'error' : (state === 'idle' ? 'breakroom' : 'writing'))
+                    : getGuestTargetPosition(agent, idx);
 
                 if (!guestSprites[id]) {
                     let sprite;
@@ -1248,7 +1424,13 @@
                     fireBadge.setDepth(2604);
                     fireBadge.setVisible(Number(agent.combo || 0) >= 5);
 
-                    guestSprites[id] = { sprite, nameText, levelBadge, fireBadge, errorMark, basePos: getAgentBasePosition(agent, idx), state, yOffset, nameOffsetY };
+                    const xpBarBg = game.add.rectangle(p.x, (p.y + yOffset) - (nameOffsetY + 10), 48, 6, 0x111827, 0.95).setOrigin(0.5);
+                    xpBarBg.setDepth(2602);
+                    const xpBarFill = game.add.rectangle(p.x - 24, (p.y + yOffset) - (nameOffsetY + 10), 1, 4, 0x22c55e, 0.95).setOrigin(0, 0.5);
+                    xpBarFill.setDepth(2603);
+
+                    applyLevelStyleToSprite(sprite, Number(agent.level || 1));
+                    guestSprites[id] = { sprite, nameText, levelBadge, fireBadge, errorMark, xpBarBg, xpBarFill, basePos: getAgentBasePosition(agent, idx), state, yOffset, nameOffsetY, level: Number(agent.level || 1) };
                 }
 
                 const g = guestSprites[id];
@@ -1274,14 +1456,32 @@
                     g.errorMark.setVisible(state === 'error');
                     markTween = game.tweens.add({ targets: g.errorMark, x: p.x + 26, y: (p.y + yOffset) - (nameOffsetY + 6), duration, ease });
                 }
+                const newLevel = Number(agent.level || 1);
                 if (g.levelBadge) {
-                    g.levelBadge.setText(`Lv.${Number(agent.level || 1)}`);
+                    g.levelBadge.setText(`Lv.${newLevel}`);
                     levelTween = game.tweens.add({ targets: g.levelBadge, x: p.x, y: (p.y + yOffset) - (nameOffsetY + 24), duration, ease });
                 }
                 if (g.fireBadge) {
                     g.fireBadge.setVisible(Number(agent.combo || 0) >= 5);
                     fireTween = game.tweens.add({ targets: g.fireBadge, x: p.x + 28, y: (p.y + yOffset) - (nameOffsetY + 28), duration, ease });
                 }
+                if (g.xpBarBg) {
+                    game.tweens.add({ targets: g.xpBarBg, x: p.x, y: (p.y + yOffset) - (nameOffsetY + 10), duration, ease });
+                }
+                if (g.xpBarFill) {
+                    const xp = Number(agent.xp || 0);
+                    const curLevelBase = newLevel <= 1 ? 0 : (newLevel === 2 ? 100 : newLevel === 3 ? 250 : newLevel === 4 ? 500 : 1000 + Math.max(0, newLevel - 5) * 500);
+                    const nextLevelBase = newLevel === 1 ? 100 : newLevel === 2 ? 250 : newLevel === 3 ? 500 : newLevel === 4 ? 1000 : (1000 + (newLevel - 4) * 500);
+                    const ratio = Math.max(0, Math.min(1, (xp - curLevelBase) / Math.max(1, (nextLevelBase - curLevelBase))));
+                    g.xpBarFill.width = Math.max(1, Math.round(46 * ratio));
+                    g.xpBarFill.x = p.x - 23;
+                    g.xpBarFill.y = (p.y + yOffset) - (nameOffsetY + 10);
+                }
+                applyLevelStyleToSprite(g.sprite, newLevel);
+                if ((g.level || 1) < newLevel) {
+                    showLevelUpEffect(id, newLevel);
+                }
+                g.level = newLevel;
                 guestTweens[id] = { move: moveTween, name: nameTween, mark: markTween, level: levelTween, fire: fireTween };
 
                 g.nameText.setText(agent.name || '에이전트');
@@ -1303,6 +1503,8 @@
                     if (guestSprites[id].errorMark) guestSprites[id].errorMark.destroy();
                     if (guestSprites[id].levelBadge) guestSprites[id].levelBadge.destroy();
                     if (guestSprites[id].fireBadge) guestSprites[id].fireBadge.destroy();
+                    if (guestSprites[id].xpBarBg) guestSprites[id].xpBarBg.destroy();
+                    if (guestSprites[id].xpBarFill) guestSprites[id].xpBarFill.destroy();
                     delete guestSprites[id];
                     if (guestBubbles[id]) {
                         guestBubbles[id].destroy();
@@ -1697,6 +1899,11 @@
                 breakroom: { x: 640, y: 360 } // 中间 1/3（沙发
             };
 
+            // 초기 타깃도 항상 walkable 구역 안에서 시작
+            const initialMainTarget = getRandomWalkablePosition('breakroom');
+            targetX = initialMainTarget.x;
+            targetY = initialMainTarget.y;
+
             // 创建 Star 角色精灵动画
             this.anims.create({
                 key: 'star_idle',
@@ -1752,6 +1959,20 @@
             // 牌匾两边加个小装饰（跟随牌匾居中）
             game.add.text(plaqueX - 190, plaqueY, '⭐', { fontFamily: 'ArkPixel, monospace', fontSize: '20px' }).setOrigin(0.5);
             game.add.text(plaqueX + 190, plaqueY, '⭐', { fontFamily: 'ArkPixel, monospace', fontSize: '20px' }).setOrigin(0.5);
+
+            // Mission board on wall (click to open popup)
+            const missionBoard = game.add.rectangle(462, 110, 180, 74, 0x1f2937, 0.88);
+            missionBoard.setStrokeStyle(3, 0xf59e0b);
+            missionBoard.setDepth(3000);
+            missionBoard.setInteractive({ useHandCursor: true });
+            const missionBoardText = game.add.text(462, 110, 'MISSION\nBOARD', {
+                fontFamily: 'ArkPixel, monospace',
+                fontSize: '13px',
+                fill: '#fef3c7',
+                align: 'center'
+            }).setOrigin(0.5).setDepth(3001);
+            missionBoard.on('pointerdown', () => openMissionPopup());
+            missionBoardText.setInteractive({ useHandCursor: true }).on('pointerdown', () => openMissionPopup());
 
             // Random plant at (565,178) (frame 0-15, 160x160 each)
             const plantFrameCount = 16;
@@ -1929,7 +2150,7 @@
                 coordsToggle.style.background = showCoords ? '#e94560' : '#333';
             });
 
-            // 允许手机端“拖动/滑动”来移动视野（本质：移动 Phaser Camera）
+            // 允许手机端“拖动/滑动”来화면 이동（本质：移动 Phaser Camera）
             // iPhone 等触屏设备默认开启；桌面端默认关闭（可手动开）。
             const panToggle = document.getElementById('pan-toggle');
             const isTouchDevice = IS_TOUCH_DEVICE;
@@ -2245,6 +2466,12 @@
 
         function applyStateData(data) {
             const nextState = normalizeState(data?.state);
+            // 버튼 active 상태는 항상 업데이트 (게임 init 여부 무관)
+            document.querySelectorAll('#control-buttons button[data-state]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.state === nextState);
+            });
+            // 게임 오브젝트가 아직 초기화 안됐으면 애니메이션 스킵
+            if (!star || !sofa) return;
             const stateInfo = STATES[nextState] || STATES.idle;
             const changed = (pendingDesiredState === null) && (nextState !== currentState);
             const nextLine = '[' + stateInfo.name + '] ' + ((data && data.detail) || '...');
@@ -2253,39 +2480,29 @@
                 typewriterText = '';
                 typewriterIndex = 0;
 
-                pendingDesiredState = null;
-                currentState = nextState;
+                // pendingDesiredState 설정 → moveStar가 목표 위치로 이동 후 상태 전환
+                pendingDesiredState = nextState;
 
-                if (nextState === 'idle') {
-                    if (game.textures.exists('sofa_busy')) {
-                        sofa.setTexture('sofa_busy');
-                        sofa.anims.play('sofa_busy', true);
-                    }
-                    star.setVisible(false);
-                    star.anims.stop();
-                    if (window.starWorking) {
-                        window.starWorking.setVisible(false);
-                        window.starWorking.anims.stop();
-                    }
-                } else if (nextState === 'error' || nextState === 'syncing') {
-                    sofa.anims.stop();
-                    sofa.setTexture('sofa_idle');
-                    star.setVisible(false);
-                    star.anims.stop();
-                    if (window.starWorking) {
-                        window.starWorking.setVisible(false);
-                        window.starWorking.anims.stop();
-                    }
-                } else {
-                    sofa.anims.stop();
-                    sofa.setTexture('sofa_idle');
-                    star.setVisible(false);
-                    star.anims.stop();
-                    if (window.starWorking) {
-                        window.starWorking.setVisible(true);
-                        window.starWorking.anims.play('star_working', true);
-                    }
+                // 이동 시작: star를 현재 위치에서 보이게 하고 걷기 시작
+                const targetArea = (STATES[nextState] || STATES.idle).area;
+                const dest = areas[targetArea] || areas.breakroom;
+                // 중간 경유지: 현재 위치 → 목표 영역
+                waypoints = [];
+                targetX = dest.x + (Math.random() - 0.5) * 40;
+                targetY = dest.y + (Math.random() - 0.5) * 20;
+                isMoving = true;
+
+                // 이동 중에는 star 캐릭터 표시
+                if (window.starWorking) {
+                    window.starWorking.setVisible(false);
+                    window.starWorking.anims.stop();
                 }
+                star.setVisible(true);
+                if (!star.anims.isPlaying || star.anims.currentAnim?.key !== 'star_idle') {
+                    star.anims.play('star_idle', true);
+                }
+                sofa.anims.stop();
+                sofa.setTexture('sofa_idle');
 
                 if (serverroom) {
                     if (nextState === 'idle') {
@@ -2313,6 +2530,7 @@
                     typewriterIndex = 0;
                 }
             }
+
         }
 
         function fetchStatus() {
@@ -2339,6 +2557,14 @@
                     renderGuestAgentsInScene();
                 }
                 fetchHistory();
+            });
+            officeSocket.on('level_up', (ev) => {
+                if (!ev) return;
+                const agent = (guestAgents || []).find(a => a.name === ev.agent || a.agentId === ev.agent);
+                if (agent) {
+                    showLevelUpEffect(agent.agentId, Number(ev.level || 1));
+                }
+                fetchGuestAgents();
             });
             officeSocket.on('connect_error', () => {
                 fetchStatus();
@@ -2372,8 +2598,9 @@
                     waypoints.shift();
                     if (waypoints.length > 0) {
                         // Next waypoint exists
-                        targetX = waypoints[0].x;
-                        targetY = waypoints[0].y;
+                        const nextPoint = clampPointToWalkable(waypoints[0], stateInfo.area);
+                        targetX = nextPoint.x;
+                        targetY = nextPoint.y;
                         isMoving = true;
                     } else {
                         // Final target: apply pending state and switch visual
@@ -2398,6 +2625,15 @@
                                     window.starWorking.setVisible(true);
                                     window.starWorking.anims.play('star_working', true);
                                 }
+                            }
+                            // serverroom 업데이트
+                            if (serverroom) {
+                                if (currentState === 'idle') { serverroom.anims.stop(); serverroom.setFrame(0); }
+                                else { serverroom.anims.play('serverroom_on', true); }
+                            }
+                            if (syncAnimSprite) {
+                                if (currentState === 'syncing') { syncAnimSprite.anims.play('sync_anim', true); }
+                                else { syncAnimSprite.anims.stop(); syncAnimSprite.setFrame(0); }
                             }
                         }
                     }
@@ -2429,6 +2665,15 @@
                             sofa.anims.stop();
                             sofa.setTexture('sofa_idle');
                         }
+                        // serverroom 업데이트
+                        if (serverroom) {
+                            if (currentState === 'idle') { serverroom.anims.stop(); serverroom.setFrame(0); }
+                            else { serverroom.anims.play('serverroom_on', true); }
+                        }
+                        if (syncAnimSprite) {
+                            if (currentState === 'syncing') { syncAnimSprite.anims.play('sync_anim', true); }
+                            else { syncAnimSprite.anims.stop(); syncAnimSprite.setFrame(0); }
+                        }
                     }
                 }
             }
@@ -2437,8 +2682,9 @@
             // Temporarily disabled to stay in work area; uncomment later if needed
             /*
             if (!isMoving && currentState !== 'idle' && pendingDesiredState === null && (time - lastWanderAt) > 3500) {
-                targetX = baseTarget.x + (Math.random() - 0.5) * 60;
-                targetY = baseTarget.y + (Math.random() - 0.5) * 40;
+                const wanderPoint = getRandomWalkablePosition(stateInfo.area);
+                targetX = wanderPoint.x;
+                targetY = wanderPoint.y;
                 star.setVisible(true);
                 star.anims.play('star_idle', true);
                 isMoving = true;

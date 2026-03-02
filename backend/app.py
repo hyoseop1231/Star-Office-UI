@@ -10,6 +10,8 @@ import re
 import threading
 import subprocess
 from collections import defaultdict
+from xp_manager import refresh_agents_xp, level_from_xp, title_from_level
+from mission_manager import evaluate_and_save as evaluate_daily_missions
 
 def notify_telegram_error(agent_name, detail):
     """에러 상태 시 텔레그램 알림"""
@@ -429,14 +431,8 @@ def save_join_keys(data):
 
 def calc_level(xp: int):
     xp = int(xp or 0)
-    level = 1
-    title = LEVEL_TABLE[0][1]
-    for i, (threshold, t) in enumerate(LEVEL_TABLE, start=1):
-        if xp >= threshold:
-            level = i
-            title = t
-        else:
-            break
+    level = level_from_xp(xp)
+    title = title_from_level(level)
     return level, title
 
 
@@ -644,6 +640,12 @@ if not os.path.exists(MISSIONS_STATE_FILE):
     save_missions_state({"dates": {}})
 if not os.path.exists(SHOP_STATE_FILE):
     save_shop_state({"purchases": {}})
+
+# Initial XP/level sync from history (graceful when history missing/empty)
+try:
+    refresh_agents_xp(AGENTS_STATE_FILE, HISTORY_FILE)
+except Exception:
+    pass
 
 
 @app.route("/agents", methods=["GET"])
@@ -1055,6 +1057,12 @@ def agent_push():
 
         save_agents_state(agents)
         append_history(target.get("name", agent_id), state, detail)
+
+        # Recompute XP/level from history and broadcast level-up events
+        _, level_up_events = refresh_agents_xp(AGENTS_STATE_FILE, HISTORY_FILE)
+        for ev in level_up_events:
+            socketio.emit("level_up", ev)
+
         broadcast_state_update()
         if state == "error":
             notify_telegram_error(target.get("name", agent_id), detail)
@@ -1074,9 +1082,14 @@ def agent_push():
 
 @app.route("/missions", methods=["GET"])
 def missions():
-    today = datetime.now().strftime("%Y-%m-%d")
-    payload = evaluate_missions(today)
-    return jsonify({"date": today, "missions": payload})
+    payload = evaluate_daily_missions(MISSIONS_STATE_FILE, HISTORY_FILE)
+    return jsonify(payload)
+
+
+@app.route("/missions/check", methods=["POST"])
+def missions_check():
+    payload = evaluate_daily_missions(MISSIONS_STATE_FILE, HISTORY_FILE)
+    return jsonify({"ok": True, **payload})
 
 
 @app.route("/leaderboard", methods=["GET"])
@@ -1201,6 +1214,15 @@ def set_state_endpoint():
             state["detail"] = data["detail"]
         state["updated_at"] = datetime.now().isoformat()
         save_state(state)
+        # agents-state.json의 main agent도 동기화
+        agents = load_agents_state()
+        for a in agents:
+            if a.get("isMain"):
+                a["state"] = state["state"]
+                a["detail"] = state["detail"]
+                a["updated_at"] = state["updated_at"]
+                break
+        save_agents_state(agents)
         append_history("왕천재", state.get("state", "idle"), state.get("detail", ""))
         broadcast_state_update()
         return jsonify({"status": "ok"})
