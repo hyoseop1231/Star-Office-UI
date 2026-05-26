@@ -44,10 +44,10 @@
       "key": "ocj_torry",
       "name": "토르",
       "maxConcurrent": 3,
-      "used": true,
-      "usedBy": "토르",
-      "usedByAgentId": "agent_1772371143587_jhrg",
-      "usedAt": "2026-03-01T22:19:03.587896",
+      "used": false,
+      "usedBy": null,
+      "usedByAgentId": null,
+      "usedAt": null,
       "reusable": true
     }
   ]

@@ -3,8 +3,127 @@
     "2026-03-01": {
       "completed": [
         "allactive",
+        "daily_no_error",
         "noerror6h"
-      ]
+      ],
+      "missions": [
+        {
+          "id": "daily_tasks",
+          "title": "오늘 작업 5개 완료",
+          "target": 5,
+          "metric": "task_completions",
+          "goal": "gte"
+        },
+        {
+          "id": "daily_no_error",
+          "title": "에러 0회",
+          "target": 0,
+          "metric": "error_count",
+          "goal": "eq"
+        },
+        {
+          "id": "daily_3_agents",
+          "title": "에이전트 동시 가동 3개",
+          "target": 3,
+          "metric": "max_concurrent_active",
+          "goal": "gte"
+        }
+      ],
+      "allDone": false
+    },
+    "2026-03-02": {
+      "completed": [
+        "daily_no_error"
+      ],
+      "missions": [
+        {
+          "id": "daily_tasks",
+          "title": "오늘 작업 5개 완료",
+          "target": 5,
+          "metric": "task_completions",
+          "goal": "gte"
+        },
+        {
+          "id": "daily_no_error",
+          "title": "에러 0회",
+          "target": 0,
+          "metric": "error_count",
+          "goal": "eq"
+        },
+        {
+          "id": "daily_3_agents",
+          "title": "에이전트 동시 가동 3개",
+          "target": 3,
+          "metric": "max_concurrent_active",
+          "goal": "gte"
+        }
+      ],
+      "allDone": false
+    },
+    "2026-03-03": {
+      "missions": [
+        {
+          "id": "daily_tasks",
+          "title": "오늘 작업 5개 완료",
+          "target": 5,
+          "metric": "task_completions",
+          "goal": "gte"
+        },
+        {
+          "id": "daily_no_error",
+          "title": "에러 0회",
+          "target": 0,
+          "metric": "error_count",
+          "goal": "eq"
+        },
+        {
+          "id": "daily_3_agents",
+          "title": "에이전트 동시 가동 3개",
+          "target": 3,
+          "metric": "max_concurrent_active",
+          "goal": "gte"
+        }
+      ],
+      "completed": [
+        "daily_3_agents",
+        "daily_no_error",
+        "daily_tasks"
+      ],
+      "allDone": true
+    },
+    "2026-03-12": {
+      "missions": [
+        {
+          "id": "daily_tasks",
+          "title": "오늘 작업 5개 완료",
+          "target": 5,
+          "metric": "task_completions",
+          "goal": "gte"
+        },
+        {
+          "id": "daily_no_error",
+          "title": "에러 0회",
+          "target": 0,
+          "metric": "error_count",
+          "goal": "eq"
+        },
+        {
+          "id": "daily_3_agents",
+          "title": "에이전트 동시 가동 3개",
+          "target": 3,
+          "metric": "max_concurrent_active",
+          "goal": "gte"
+        }
+      ],
+      "completed": [
+        "daily_no_error"
+      ],
+      "allDone": false
     }
+  },
+  "streak": {
+    "current": 1,
+    "max": 1,
+    "lastCompletedDate": "2026-03-03"
   }
 }
